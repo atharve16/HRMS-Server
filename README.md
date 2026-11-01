@@ -110,7 +110,7 @@ Company holidays are always paid, company-wide `LocalDate` values interpreted th
 
 In-app notification types are `HOLIDAY_ANNOUNCEMENT`, `LEAVE_APPROVED`, and `LEAVE_REJECTED`. Holiday create/update/deactivation creates notifications for all active employees except an employee account performing its own action. Leave decisions notify only the active employee who owns the request. Notification reads are scoped by authenticated `userId`, newest first, and mark-read operations are idempotent.
 
-New holiday announcements and leave approval/rejection also send concise emails through the existing Spring Mail configuration. Email is attempted synchronously after the MongoDB transaction commits. SMTP failures are logged and never roll back or change the successful holiday/leave API result. Completed leave transitions, duplicate holiday creation, no-op holiday updates, and repeated deactivation do not send duplicate email. There is intentionally no queue, scheduler, automatic retry, preference system, or real-time push channel.
+New holiday announcements and leave approval/rejection also send concise emails through Brevo's transactional email REST API. Email is attempted synchronously after the MongoDB transaction commits. Brevo or network failures are logged without message content and never roll back or change the successful holiday/leave API result. Completed leave transitions, duplicate holiday creation, no-op holiday updates, and repeated deactivation do not send duplicate email. There is intentionally no queue, scheduler, automatic retry, preference system, or real-time push channel.
 
 ### Payroll
 
@@ -258,12 +258,12 @@ Copy `.env.example` to a local `.env` for your own tooling. Spring Boot does not
 | `OTP_RATE_LIMIT_MAX_REQUESTS` | `10` | Per client IP and window |
 | `OTP_RATE_LIMIT_WINDOW` | `300000` | Milliseconds |
 | `INITIAL_ADMIN_EMAIL` | none | Phase 2 bootstrap identity |
-| `MAIL_HOST` | `smtp.gmail.com` | SMTP server |
-| `MAIL_PORT` | `587` | SMTP STARTTLS port |
-| `MAIL_USERNAME` | none | Secret |
-| `MAIL_PASSWORD` | none | Secret/app password |
-| `MAIL_FROM` | none | Verified sender |
-| `MAIL_FROM_NAME` | `HRMS` | Display name used in OTP mail |
+| `BREVO_API_KEY` | none | Required Brevo API key; keep secret |
+| `MAIL_FROM` | none | Required sender address verified/configured in Brevo |
+| `MAIL_FROM_NAME` | `HRMS` | Sender display name |
+| `BREVO_API_URL` | `https://api.brevo.com/v3/smtp/email` | Brevo transactional email endpoint |
+| `BREVO_CONNECT_TIMEOUT` | `5s` | Brevo connection timeout |
+| `BREVO_RESPONSE_TIMEOUT` | `10s` | Brevo response timeout |
 | `REFRESH_COOKIE_NAME` | `hrms_refresh_token` | HTTP-only refresh cookie name |
 | `COOKIE_SECURE` | `false` in dev, `true` in prod | Set true when using HTTPS |
 | `COOKIE_SAME_SITE` | `Lax` | Cookie SameSite policy |
@@ -288,9 +288,14 @@ Never commit `.env` or real credentials.
 
 Transactions require a replica set. Atlas provides one; a standalone local `mongod` is insufficient for transaction integration testing.
 
-## SMTP setup
+## Brevo transactional email setup
 
-For Gmail, enable two-factor authentication and create an app password. Set `MAIL_USERNAME`, `MAIL_PASSWORD`, and `MAIL_FROM`; do not use a personal password. Production should use a dedicated transactional email account/provider with a verified sending domain.
+1. In Brevo, create an API key with permission to submit transactional email.
+2. Add and verify the sender or sending domain in Brevo.
+3. Set `BREVO_API_KEY`, `MAIL_FROM`, and `MAIL_FROM_NAME`. `MAIL_FROM` must be the sender Brevo accepts; the application does not substitute or bypass sender validation.
+4. If a Gmail-based sender is configured, Brevo may rewrite it according to Brevo's sender rules. Use the actual Brevo response and delivery logs when diagnosing this; do not invent a different sender in the application.
+
+The backend posts JSON to `POST https://api.brevo.com/v3/smtp/email` with the `api-key` header. It does not use SMTP credentials, ports, or Gmail app passwords.
 
 ## Local development
 
@@ -305,14 +310,16 @@ $env:COMPANY_TIMEZONE = 'Asia/Kolkata'
 $env:FRONTEND_URL = 'http://localhost:3000'
 $env:JWT_SECRET = 'replace-with-at-least-32-random-characters'
 $env:OTP_HASH_SECRET = 'replace-with-a-different-at-least-32-character-secret'
+$env:BREVO_API_KEY = 'replace-with-a-brevo-api-key'
 $env:MAIL_FROM = 'noreply@example.com'
+$env:MAIL_FROM_NAME = 'HRMS'
 $env:INITIAL_ADMIN_EMAIL = 'admin@example.com'
 mvn spring-boot:run
 ```
 
 Then open `http://localhost:8080/swagger-ui.html` or call `http://localhost:8080/api/v1/system/health`.
 
-To manually test authentication, request an OTP for the configured admin email, read the code from the configured SMTP mailbox, then POST it to `/api/v1/auth/verify-otp`. Store the returned access token in an `Authorization: Bearer ...` header for `/api/v1/auth/me`. Preserve the `Set-Cookie` refresh cookie and send it to `/api/v1/auth/refresh`; the response replaces it. POST `/api/v1/auth/logout` with the access token and cookie to revoke the session.
+To manually test authentication, request an OTP for the configured admin email, read the delivered code, then POST it to `/api/v1/auth/verify-otp`. Store the returned access token in an `Authorization: Bearer ...` header for `/api/v1/auth/me`. Preserve the `Set-Cookie` refresh cookie and send it to `/api/v1/auth/refresh`; the response replaces it. POST `/api/v1/auth/logout` with the access token and cookie to revoke the session.
 
 With the admin access token, POST the employee JSON shown above to `/api/v1/admin/employees`, then use the returned `id` with the admin detail, patch, deactivate, and reactivate endpoints. Use query parameters such as `?page=0&limit=20&search=ada&employmentStatus=ACTIVE&sortBy=lastName&sortDirection=asc` for list filtering. After the employee receives an OTP, call `/api/v1/employees/me` with that employee's access token. Deactivation should make subsequent OTP requests ineligible; reactivation restores login eligibility.
 
@@ -382,7 +389,7 @@ PATCH /api/v1/notifications/{notificationId}/read
 PATCH /api/v1/notifications/read-all
 ```
 
-A notification response contains only the title, message, type, optional reference ID, read state, read timestamp, and creation timestamp; ownership is always derived from the authenticated employee. With SMTP configured, new holiday, approval, and rejection email is sent after commit. To verify failure isolation, temporarily use an unreachable SMTP host: the business API should still succeed and the server should log the mail error.
+A notification response contains only the title, message, type, optional reference ID, read state, read timestamp, and creation timestamp; ownership is always derived from the authenticated employee. With Brevo configured, new holiday, approval, and rejection email is sent after commit. Failure isolation is covered by mocked automated tests: a Brevo or network failure does not change the successful business API result.
 
 To test payroll, first create a monthly salary with an admin token:
 
@@ -430,6 +437,28 @@ mvn clean verify
 
 Build with JDK 21 using `mvn clean verify`, then run `java -jar target/hrms-backend-0.0.1-SNAPSHOT.jar` with `SPRING_PROFILES_ACTIVE=prod` and secrets supplied by the hosting platform's secret manager. Terminate TLS at a trusted ingress/load balancer, restrict CORS to the deployed frontend, use an Atlas IP allowlist/private endpoint, and expose only required health probes. Swagger is disabled by default in production and can be deliberately enabled with `OPENAPI_ENABLED=true`.
 
+### Render deployment (Docker)
+
+1. Push this backend directory, including `Dockerfile`, to the Git repository Render will deploy.
+2. In Render, choose **New > Web Service**, connect the repository, select the production branch, and choose the **Docker** runtime. If this backend is inside a larger repository, set **Root Directory** to this directory (or set **Dockerfile Path** to this directory's `Dockerfile`). Leave the optional **Docker Command** unset so Render uses the Dockerfile entrypoint; Docker builds do not need a separate build command.
+3. Choose a region near MongoDB Atlas and the frontend. Set the health check path to `/api/v1/system/health`.
+4. Add these Render environment variables (mark secret values as secret):
+   - `SPRING_PROFILES_ACTIVE=prod`
+   - `MONGODB_URI=<Atlas connection string>`
+   - `MONGODB_DATABASE=hrms`
+   - `JWT_SECRET=<at least 32 random characters>`
+   - `OTP_HASH_SECRET=<a different secret of at least 32 random characters>`
+   - `BREVO_API_KEY=<Brevo API key>`
+   - `MAIL_FROM=<sender verified/configured in Brevo>`
+   - `MAIL_FROM_NAME=HRMS`
+   - `FRONTEND_URL=https://<frontend-host>`
+   - `INITIAL_ADMIN_EMAIL=<administrator email>`
+   - `COOKIE_SECURE=true`
+   - `COOKIE_SAME_SITE=None` when the frontend and API are cross-site; otherwise retain the appropriate stricter setting.
+5. Do not add `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_HOST`, or `MAIL_PORT`. Render supplies `PORT`; the Docker entrypoint passes it to Spring Boot, so no port override is needed.
+6. Before the first production deployment, apply the documented MongoDB indexes because production disables automatic index creation. Ensure Atlas Network Access permits the Render service's outbound traffic (or use a private connection/static outbound IP option appropriate to the Render plan).
+7. Deploy, then confirm `/api/v1/system/health` returns `UP`. Request an OTP and check Brevo's transactional logs for the returned submission/delivery record. If Brevo rejects the sender, correct the verified sender configuration rather than changing addresses in code.
+
 ## Delivery roadmap
 
 1. Platform foundation — implemented
@@ -444,4 +473,4 @@ Build with JDK 21 using `mvn clean verify`, then run `java -jar target/hrms-back
 
 ## Known limitations
 
-Authentication is complete, but the current in-memory IP rate limiter is process-local; production deployments with multiple instances should place rate limiting behind a shared gateway or add a shared store before scaling horizontally. OTP SMTP delivery remains synchronous and fails OTP requests when delivery fails; business notification email is post-commit, best-effort, and has no automatic retry. MongoDB transaction integration tests are skipped when Docker is unavailable. Partial-day leave, automatic accrual, post-approval employee cancellation/correction, recurring or department-specific holidays, notification preferences, push delivery, payroll scheduling, and automatic disbursement remain out of scope. Historical approved leave is intentionally not recalculated when the holiday calendar changes. Attendance does not create absence, holiday, or on-leave records. Salary selection uses the structure effective on the employee's last eligible date in the payroll month; salary changes should therefore be effective on month boundaries because mid-month salary proration is not implemented. Payroll supports full-day attendance/leave classifications only, has no statutory tax/PF/ESI/TDS engine, no PDF renderer, and no post-finalization revision workflow. Cross-instance balance and payroll writes rely on MongoDB unique indexes, transactions, and optimistic locking; clients should retry explicit concurrency conflicts. Assignment overlap locking is process-local; multi-instance deployments should serialize assignment commands before scaling assignment writes horizontally. The active machine must use JDK 21; Java 17 cannot compile this project. Multi-company payroll and bank transfer integrations are not implemented.
+Authentication is complete, but the current in-memory IP rate limiter is process-local; production deployments with multiple instances should place rate limiting behind a shared gateway or add a shared store before scaling horizontally. OTP Brevo delivery remains synchronous and fails OTP requests when delivery fails; business notification email is post-commit, best-effort, and has no automatic retry. MongoDB transaction integration tests are skipped when Docker is unavailable. Partial-day leave, automatic accrual, post-approval employee cancellation/correction, recurring or department-specific holidays, notification preferences, push delivery, payroll scheduling, and automatic disbursement remain out of scope. Historical approved leave is intentionally not recalculated when the holiday calendar changes. Attendance does not create absence, holiday, or on-leave records. Salary selection uses the structure effective on the employee's last eligible date in the payroll month; salary changes should therefore be effective on month boundaries because mid-month salary proration is not implemented. Payroll supports full-day attendance/leave classifications only, has no statutory tax/PF/ESI/TDS engine, no PDF renderer, and no post-finalization revision workflow. Cross-instance balance and payroll writes rely on MongoDB unique indexes, transactions, and optimistic locking; clients should retry explicit concurrency conflicts. Assignment overlap locking is process-local; multi-instance deployments should serialize assignment commands before scaling assignment writes horizontally. The active machine must use JDK 21; Java 17 cannot compile this project. Multi-company payroll and bank transfer integrations are not implemented.

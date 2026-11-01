@@ -8,6 +8,7 @@ import com.hrms.auth.repository.UserRepository;
 import com.hrms.common.exceptions.ApiException;
 import com.hrms.common.exceptions.ErrorCode;
 import com.hrms.config.AuthProperties;
+import com.hrms.email.BrevoEmailException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -17,10 +18,8 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.http.HttpStatus;
-import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
 
-import jakarta.mail.MessagingException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
@@ -74,7 +73,7 @@ public class OtpService {
         verification.setAttempts(0);
         verification.setCreatedAt(now);
         verification.setResendAllowedAt(now.plus(properties.otp().resendCooldown()));
-        // Reserve the code while it is being delivered. It becomes usable only after SMTP succeeds.
+        // Reserve the code while it is being delivered. It becomes usable only after Brevo accepts it.
         verification.setActive(false);
         verification.setConsumedAt(now);
         try {
@@ -82,7 +81,7 @@ public class OtpService {
             emailService.sendAuthenticationOtp(user.get().getEmail(), otp);
             consumeActive(normalizedEmail, now);
             activate(verification.getId());
-        } catch (MessagingException | java.io.UnsupportedEncodingException | MailException exception) {
+        } catch (BrevoEmailException exception) {
             if (verification.getId() != null) {
                 consume(verification.getId(), now);
             }

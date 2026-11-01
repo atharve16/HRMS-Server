@@ -8,7 +8,7 @@ import com.hrms.auth.repository.OtpVerificationRepository;
 import com.hrms.auth.repository.UserRepository;
 import com.hrms.common.exceptions.ApiException;
 import com.hrms.common.exceptions.ErrorCode;
-import jakarta.mail.MessagingException;
+import com.hrms.email.BrevoEmailException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -84,7 +84,7 @@ class OtpServiceTest {
             saved.setId("otp-id");
             return saved;
         });
-        org.mockito.Mockito.doThrow(new MessagingException("smtp unavailable"))
+        org.mockito.Mockito.doThrow(BrevoEmailException.network(new java.io.IOException("unavailable")))
                 .when(emailService).sendAuthenticationOtp(any(), any());
 
         assertThatThrownBy(() -> service.issue("active@example.com"))

@@ -24,23 +24,15 @@ spring:
     default-property-inclusion: non_null
     serialization:
       write-dates-as-timestamps: false
-  mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-            required: true
-        transport:
-          protocol: smtp
-    test-connection: false
   lifecycle:
     timeout-per-shutdown-phase: 30s
+
+brevo:
+  api:
+    url: ${BREVO_API_URL:https://api.brevo.com/v3/smtp/email}
+    key: ${BREVO_API_KEY:}
+    connect-timeout: ${BREVO_CONNECT_TIMEOUT:5s}
+    response-timeout: ${BREVO_RESPONSE_TIMEOUT:10s}
 
 app:
   company:

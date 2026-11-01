@@ -1,23 +1,20 @@
 package com.hrms.notification.service;
 
-import com.hrms.config.AuthProperties;
-import jakarta.mail.internet.MimeMessage;
+import com.hrms.email.BrevoEmailClient;
+import com.hrms.email.BrevoEmailException;
+import com.hrms.email.BrevoEmailMessage;
 import org.slf4j.*;
-import org.springframework.mail.javamail.*;
 import org.springframework.stereotype.Service;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 
 @Service
 public class NotificationEmailService {
     private static final Logger log = LoggerFactory.getLogger(NotificationEmailService.class);
-    private final JavaMailSender mailSender;
-    private final AuthProperties properties;
+    private final BrevoEmailClient emailClient;
 
-    public NotificationEmailService(JavaMailSender mailSender, AuthProperties properties) {
-        this.mailSender = mailSender;
-        this.properties = properties;
+    public NotificationEmailService(BrevoEmailClient emailClient) {
+        this.emailClient = emailClient;
     }
 
     public void sendHolidayAnnouncement(String recipient, String holidayName, LocalDate date) {
@@ -37,15 +34,13 @@ public class NotificationEmailService {
 
     private void send(String recipient, String subject, String body) {
         try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
-            helper.setFrom(properties.mail().from(), properties.mail().fromName());
-            helper.setTo(recipient);
-            helper.setSubject(subject);
-            helper.setText(body, false);
-            mailSender.send(message);
-        } catch (Exception exception) {
-            log.error("Notification email delivery failed for recipient {} and subject {}", recipient, subject, exception);
+            emailClient.send(BrevoEmailMessage.text(recipient, subject, body));
+        } catch (BrevoEmailException exception) {
+            log.error("Notification email delivery failed (category={}, status={})",
+                    exception.getCategory(), exception.getStatusCode());
+        } catch (RuntimeException exception) {
+            // Preserve the post-commit, best-effort contract even for an unexpected client-side failure.
+            log.error("Notification email delivery failed before Brevo returned a response");
         }
     }
 }
