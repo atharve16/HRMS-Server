@@ -1,0 +1,22 @@
+spring:
+  data:
+    mongodb:
+      uri: ${MONGODB_URI}
+      database: ${MONGODB_DATABASE:hrms}
+      auto-index-creation: false
+
+logging:
+  level:
+    root: INFO
+    com.hrms: INFO
+
+springdoc:
+  api-docs:
+    enabled: ${OPENAPI_ENABLED:false}
+  swagger-ui:
+    enabled: ${OPENAPI_ENABLED:false}
+
+app:
+  auth:
+    cookie:
+      secure: ${COOKIE_SECURE:true}

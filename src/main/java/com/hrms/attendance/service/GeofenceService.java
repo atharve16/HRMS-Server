@@ -1,0 +1,8 @@
+package com.hrms.attendance.service;
+
+import com.hrms.attendance.dto.GpsRequest;import com.hrms.attendance.model.OfficeSnapshot;import com.hrms.common.exceptions.*;import org.springframework.stereotype.Service;
+@Service public class GeofenceService {
+ public double distanceMeters(double lat1,double lon1,double lat2,double lon2){if(!valid(lat1,lon1)||!valid(lat2,lon2))throw new ApiException(ErrorCode.VALIDATION_ERROR,org.springframework.http.HttpStatus.BAD_REQUEST,"GPS coordinates are invalid");double r=6371008.8,dLat=Math.toRadians(lat2-lat1),dLon=Math.toRadians(lon2-lon1);double a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(Math.toRadians(lat1))*Math.cos(Math.toRadians(lat2))*Math.sin(dLon/2)*Math.sin(dLon/2);return 2*r*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));}
+ public double validate(GpsRequest request,OfficeSnapshot office){if(!valid(request.latitude(),request.longitude()))throw new ApiException(ErrorCode.VALIDATION_ERROR,org.springframework.http.HttpStatus.BAD_REQUEST,"GPS coordinates are invalid");if(request.accuracyMeters()<=0||request.accuracyMeters()>office.getMaximumGpsAccuracyMeters())throw new ApiException(ErrorCode.GPS_ACCURACY_TOO_LOW,org.springframework.http.HttpStatus.BAD_REQUEST,"GPS accuracy is outside the permitted limit");double distance=distanceMeters(request.latitude(),request.longitude(),office.getCoordinates().getY(),office.getCoordinates().getX());if(distance>office.getGeofenceRadiusMeters())throw new ApiException(ErrorCode.OUTSIDE_GEOFENCE,org.springframework.http.HttpStatus.FORBIDDEN,"Location is outside the assigned office geofence");return distance;}
+ public static boolean valid(double lat,double lon){return Double.isFinite(lat)&&Double.isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180;}
+}

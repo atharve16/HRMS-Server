@@ -1,0 +1,15 @@
+spring:
+  data:
+    mongodb:
+      auto-index-creation: true
+
+logging:
+  level:
+    com.hrms: DEBUG
+    org.springframework.security: INFO
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

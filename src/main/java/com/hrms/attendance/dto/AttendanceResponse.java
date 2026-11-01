@@ -1,0 +1,5 @@
+package com.hrms.attendance.dto;
+import com.hrms.attendance.model.*;import java.time.*;import java.util.List;
+public record AttendanceResponse(String id,String employeeId,String employeeCodeSnapshot,String employeeNameSnapshot,LocalDate workDate,AttendanceStatus attendanceStatus,ShiftSnapshot shiftSnapshot,OfficeSnapshot officeSnapshot,List<AttendanceSession> sessions,long totalWorkedMinutes,long totalBreakMinutes,long lateByMinutes,long earlyDepartureByMinutes,long overtimeMinutes,boolean activeSession,List<CorrectionHistoryEntry> correctionHistory,Instant createdAt,Instant updatedAt) {
+ public static AttendanceResponse from(AttendanceRecord a){return new AttendanceResponse(a.getId(),a.getEmployeeId(),a.getEmployeeCodeSnapshot(),a.getEmployeeNameSnapshot(),a.getWorkDate(),a.getAttendanceStatus(),a.getShiftSnapshot(),a.getOfficeSnapshot(),a.getSessions(),a.getTotalWorkedMinutes(),a.getTotalBreakMinutes(),a.getLateByMinutes(),a.getEarlyDepartureByMinutes(),a.getOvertimeMinutes(),a.getSessions().stream().anyMatch(s->s.getStatus()==SessionStatus.OPEN),a.getCorrectionHistory(),a.getCreatedAt(),a.getUpdatedAt());}
+}
