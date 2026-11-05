@@ -29,11 +29,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Arrays;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/api/v1/auth")
 @Tag(name = "Authentication", description = "Passwordless email OTP authentication")
 public class AuthController {
+
+    private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
 
     private final AuthenticationService authenticationService;
     private final OtpRateLimiter rateLimiter;
@@ -72,7 +76,10 @@ public class AuthController {
     @PostMapping("/refresh")
     @Operation(summary = "Rotate the refresh token and issue a new access token")
     public ResponseEntity<ApiResponse<AuthenticationResponse>> refresh(HttpServletRequest request) {
-        AuthenticationService.AuthResult result = authenticationService.refresh(readRefreshCookie(request));
+        String rawRefreshToken = readRefreshCookie(request);
+        logger.debug("Refresh endpoint invoked. Refresh cookie present: {}", rawRefreshToken != null);
+        AuthenticationService.AuthResult result = authenticationService.refresh(rawRefreshToken);
+        logger.debug("Refresh token rotation succeeded for user: {}", result.response().user().id());
         return tokenResponse("Session refreshed", result);
     }
 
@@ -80,7 +87,9 @@ public class AuthController {
     @SecurityRequirement(name = "bearerAuth")
     @Operation(summary = "Revoke the current refresh-token family")
     public ResponseEntity<ApiResponse<LogoutResponse>> logout(HttpServletRequest request) {
-        authenticationService.logout(readRefreshCookie(request));
+        String rawRefreshToken = readRefreshCookie(request);
+        logger.debug("Logout invoked. Refresh cookie present: {}", rawRefreshToken != null);
+        authenticationService.logout(rawRefreshToken);
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookieService.clear().toString())
                 .body(ApiResponse.success("Logout successful", new LogoutResponse(true), clockSource));

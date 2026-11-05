@@ -20,3 +20,4 @@ app:
   auth:
     cookie:
       secure: ${COOKIE_SECURE:true}
+      same-site: ${COOKIE_SAME_SITE:None}

@@ -40,6 +40,9 @@ app:
   cors:
     allowed-origins:
       - ${FRONTEND_URL:http://localhost:3000}
+      - http://localhost:3000
+      - http://127.0.0.1:3000
+      - https://hrms-three-delta.vercel.app
   geofence:
     default-radius-meters: ${DEFAULT_GEOFENCE_RADIUS:100}
     max-gps-accuracy-meters: ${MAX_GPS_ACCURACY:50}
@@ -64,8 +67,8 @@ app:
     cookie:
       refresh-token-name: ${REFRESH_COOKIE_NAME:hrms_refresh_token}
       path: /api/v1/auth
-      secure: ${COOKIE_SECURE:false}
-      same-site: ${COOKIE_SAME_SITE:Lax}
+      secure: ${COOKIE_SECURE:true}
+      same-site: ${COOKIE_SAME_SITE:None}
       domain: ${COOKIE_DOMAIN:}
     mail:
       from: ${MAIL_FROM:}
