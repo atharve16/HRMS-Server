@@ -57,7 +57,7 @@ class JwtServiceTest {
 
     private AuthProperties withJwtSecret(AuthProperties base, String secret) {
         AuthProperties.Jwt jwt = new AuthProperties.Jwt(secret, base.jwt().issuer(),
-                base.jwt().accessExpiry(), base.jwt().refreshExpiry());
+                base.jwt().accessExpiry(), base.jwt().refreshExpiry(), base.jwt().refreshGracePeriod());
         return new AuthProperties(jwt, base.otp(), base.cookie(), base.mail(), base.rateLimit(), base.bootstrap());
     }
 }

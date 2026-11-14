@@ -12,7 +12,7 @@ public final class AuthTestProperties {
     public static AuthProperties create() {
         return new AuthProperties(
                 new AuthProperties.Jwt("jwt-test-secret-at-least-thirty-two-characters", "hrms-test",
-                        Duration.ofMinutes(15), Duration.ofDays(30)),
+                        Duration.ofMinutes(15), Duration.ofDays(30), Duration.ofSeconds(30)),
                 new AuthProperties.Otp("otp-test-secret-at-least-thirty-two-characters",
                         Duration.ofMinutes(5), Duration.ofSeconds(60), 5),
                 new AuthProperties.Cookie("hrms_refresh_token", "/api/v1/auth", false, "Lax", ""),

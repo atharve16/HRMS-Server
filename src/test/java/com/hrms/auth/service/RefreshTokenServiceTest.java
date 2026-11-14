@@ -67,8 +67,24 @@ class RefreshTokenServiceTest {
     }
 
     @Test
-    void detectsRevokedTokenReuseAndRevokesTheFamily() {
+    void allowsRotationWithinGracePeriodWithoutRevokingFamily() {
         RefreshToken revoked = token("raw-old", NOW.minusSeconds(10));
+        when(repository.findByTokenHash(hashService.hash("raw-old"))).thenReturn(Optional.of(revoked));
+        when(generator.generateRefreshToken()).thenReturn("raw-grace-replacement");
+        when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        RefreshTokenService.RotatedRefreshToken rotated = service.rotate("raw-old");
+
+        assertThat(rotated.userId()).isEqualTo("user-id");
+        assertThat(rotated.issuedToken().rawToken()).isEqualTo("raw-grace-replacement");
+        assertThat(rotated.issuedToken().document().getTokenFamilyId()).isEqualTo("family-id");
+        org.mockito.Mockito.verify(mongoTemplate, org.mockito.Mockito.never())
+                .updateMulti(any(), any(), org.mockito.ArgumentMatchers.eq(RefreshToken.class));
+    }
+
+    @Test
+    void detectsRevokedTokenReuseAndRevokesTheFamily() {
+        RefreshToken revoked = token("raw-old", NOW.minusSeconds(60));
         when(repository.findByTokenHash(hashService.hash("raw-old"))).thenReturn(Optional.of(revoked));
 
         assertThatThrownBy(() -> service.rotate("raw-old"))

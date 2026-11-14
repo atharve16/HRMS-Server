@@ -59,6 +59,7 @@ app:
       issuer: ${JWT_ISSUER:hrms-backend}
       access-expiry: ${JWT_ACCESS_EXPIRY:900000}ms
       refresh-expiry: ${JWT_REFRESH_EXPIRY:2592000000}ms
+      refresh-grace-period: ${JWT_REFRESH_GRACE_PERIOD:30000}ms
     otp:
       hash-secret: ${OTP_HASH_SECRET:}
       expiry: ${OTP_EXPIRY:300000}ms

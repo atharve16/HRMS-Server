@@ -50,6 +50,11 @@ public class RefreshTokenService {
         RefreshToken current = repository.findByTokenHash(hashService.hash(rawToken))
                 .orElseThrow(this::invalidToken);
         if (current.getRevokedAt() != null) {
+            java.time.Duration gracePeriod = properties.jwt().refreshGracePeriod();
+            if (gracePeriod != null && !now.isAfter(current.getRevokedAt().plus(gracePeriod))) {
+                IssuedRefreshToken replacement = create(current.getUserId(), current.getTokenFamilyId());
+                return new RotatedRefreshToken(current.getUserId(), replacement);
+            }
             revokeFamily(current.getTokenFamilyId(), now);
             throw new ApiException(ErrorCode.REFRESH_TOKEN_REUSED, HttpStatus.UNAUTHORIZED,
                     "Refresh token reuse was detected; the session has been revoked");
@@ -77,6 +82,13 @@ public class RefreshTokenService {
             });
         } catch (ApiException exception) {
             if (exception.getErrorCode() == ErrorCode.REFRESH_TOKEN_REUSED) {
+                java.time.Duration gracePeriod = properties.jwt().refreshGracePeriod();
+                RefreshToken updated = repository.findById(current.getId()).orElse(null);
+                if (updated != null && updated.getRevokedAt() != null && gracePeriod != null
+                        && !now.isAfter(updated.getRevokedAt().plus(gracePeriod))) {
+                    IssuedRefreshToken replacement = create(current.getUserId(), current.getTokenFamilyId());
+                    return new RotatedRefreshToken(current.getUserId(), replacement);
+                }
                 revokeFamily(current.getTokenFamilyId(), now);
             }
             throw exception;
