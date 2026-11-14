@@ -1,5 +1,6 @@
 package com.hrms.attendance.service;
 
+import com.hrms.assignment.model.AssignmentStatus;
 import com.hrms.assignment.model.EmployeeWorkAssignment;
 import com.hrms.assignment.repository.AssignmentRepository;
 import com.hrms.attendance.dto.AttendanceMonthlyReportResponse;
@@ -300,6 +301,8 @@ public class AttendanceReportService {
 
     private EmployeeWorkAssignment resolveAssignment(List<EmployeeWorkAssignment> employeeAssignments, LocalDate date) {
         List<EmployeeWorkAssignment> matching = employeeAssignments.stream()
+                .filter(assignment -> !(assignment.getStatus() == AssignmentStatus.INACTIVE
+                        && assignment.getEffectiveTo() == null))
                 .filter(assignment -> assignment.getEffectiveFrom() != null
                         && !date.isBefore(assignment.getEffectiveFrom()))
                 .filter(assignment -> assignment.getEffectiveTo() == null
