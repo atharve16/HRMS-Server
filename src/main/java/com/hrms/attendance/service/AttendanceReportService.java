@@ -12,6 +12,7 @@ import com.hrms.common.exceptions.ApiException;
 import com.hrms.common.exceptions.ErrorCode;
 import com.hrms.common.utils.CompanyTimeProvider;
 import com.hrms.employee.model.Employee;
+import com.hrms.employee.model.EmploymentStatus;
 import com.hrms.employee.repository.EmployeeRepository;
 import com.hrms.holiday.model.CompanyHoliday;
 import com.hrms.holiday.repository.CompanyHolidayRepository;
@@ -94,6 +95,7 @@ public class AttendanceReportService {
                 : normalizedEmployeeCode.toLowerCase(Locale.ROOT);
 
         List<Employee> reportEmployees = employees.findEmployedOnOrBefore(to).stream()
+                .filter(employee -> employee.getEmploymentStatus() != EmploymentStatus.INACTIVE)
                 .filter(employee -> employee.getJoiningDate() == null || !employee.getJoiningDate().isAfter(to))
                 .filter(employee -> employee.getTerminationDate() == null || !employee.getTerminationDate().isBefore(from))
                 .filter(employee -> normalizedDepartmentId == null
