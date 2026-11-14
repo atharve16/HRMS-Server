@@ -11,4 +11,7 @@ public interface LeaveRequestRepository extends MongoRepository<LeaveRequest, St
 
     @Query("{'employeeId':?0,'status':'APPROVED','startDate':{$lte:?2},'endDate':{$gte:?1}}")
     List<LeaveRequest> findApprovedOverlapping(String employeeId, LocalDate startDate, LocalDate endDate);
+
+    @Query("{'status':'APPROVED','startDate':{'$lte':?1},'endDate':{'$gte':?0}}")
+    List<LeaveRequest> findApprovedOverlappingPeriod(LocalDate fromDate, LocalDate toDate);
 }
