@@ -257,10 +257,22 @@ public class AttendanceReportService {
                     .anyMatch(session -> session.getStatus() == SessionStatus.OPEN);
             boolean shiftNotFinished = date.isAfter(today)
                     || (scheduledEnd != null && now.isBefore(scheduledEnd));
+            Set<java.time.DayOfWeek> workingDays = snapshot != null && snapshot.getWorkingDays() != null
+                    ? snapshot.getWorkingDays()
+                    : assignedShift == null ? null : assignedShift.getWorkingDays();
+            boolean weeklyOff = workingDays != null && !workingDays.contains(date.getDayOfWeek());
+            boolean belowHalfDayThreshold = scheduledMinutes <= 0
+                    || record.getTotalWorkedMinutes() * 2 < scheduledMinutes;
 
             String status;
             if (openSession || shiftNotFinished) {
                 status = IN_PROGRESS;
+            } else if (belowHalfDayThreshold && holidayDates.contains(date)) {
+                status = HOLIDAY;
+            } else if (belowHalfDayThreshold && leaveDays.contains(date)) {
+                status = LEAVE;
+            } else if (belowHalfDayThreshold && weeklyOff) {
+                status = WEEKLY_OFF;
             } else {
                 status = classify(record.getTotalWorkedMinutes(), scheduledMinutes);
             }
