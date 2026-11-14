@@ -275,10 +275,10 @@ public class AttendanceReportService {
             );
         }
 
-        if (assignment == null || assignedShift == null) return empty(UNASSIGNED);
-
         if (holidayDates.contains(date)) return empty(HOLIDAY);
         if (leaveDays.contains(date)) return empty(LEAVE);
+
+        if (assignment == null || assignedShift == null) return empty(UNASSIGNED);
 
         Set<java.time.DayOfWeek> workingDays = assignedShift.getWorkingDays();
         if (workingDays == null || !workingDays.contains(date.getDayOfWeek())) {
