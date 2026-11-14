@@ -10,7 +10,9 @@ import com.hrms.attendance.service.AttendanceReportService;
 import com.hrms.common.utils.CompanyTimeProvider;
 import com.hrms.employee.model.Employee;
 import com.hrms.employee.repository.EmployeeRepository;
+import com.hrms.holiday.model.CompanyHoliday;
 import com.hrms.holiday.repository.CompanyHolidayRepository;
+import com.hrms.leave.model.LeaveRequest;
 import com.hrms.leave.repository.LeaveRequestRepository;
 import com.hrms.shift.model.Shift;
 import com.hrms.shift.repository.ShiftRepository;
@@ -66,23 +68,36 @@ class AttendanceReportServiceTest {
         shift.setStartTime(LocalTime.of(9, 0));
         shift.setEndTime(LocalTime.of(17, 0));
         shift.setExpectedBreakMinutes(60);
-        shift.setWorkingDays(EnumSet.allOf(DayOfWeek.class));
+        shift.setWorkingDays(EnumSet.of(
+                DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
+                DayOfWeek.THURSDAY, DayOfWeek.FRIDAY
+        ));
 
         when(employees.findEmployedOnOrBefore(LocalDate.of(2026, 11, 30))).thenReturn(List.of(employee));
         when(assignments.findOverlappingPeriod(LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30)))
                 .thenReturn(List.of(assignment));
         when(shifts.findAllById(Set.of("shift-1"))).thenReturn(List.of(shift));
+        CompanyHoliday holiday = new CompanyHoliday();
+        holiday.setDate(LocalDate.of(2026, 11, 5));
+        holiday.setActive(true);
         when(holidays.findByDateBetweenAndActiveTrueOrderByDateAsc(
-                LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30))).thenReturn(List.of());
+                LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30))).thenReturn(List.of(holiday));
+
+        LeaveRequest approvedLeave = new LeaveRequest();
+        approvedLeave.setEmployeeId(employee.getId());
+        approvedLeave.setLeaveDates(List.of(LocalDate.of(2026, 11, 6)));
         when(leaves.findApprovedOverlappingPeriod(
-                LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30))).thenReturn(List.of());
+                LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30))).thenReturn(List.of(approvedLeave));
         when(time.now()).thenReturn(Instant.parse("2026-12-01T00:00:00Z"));
         when(time.companyDate()).thenReturn(LocalDate.of(2026, 12, 1));
 
         List<AttendanceRecord> records = List.of(
+                record(employee.getId(), LocalDate.of(2026, 11, 1), 0),
                 record(employee.getId(), LocalDate.of(2026, 11, 2), 420),
                 record(employee.getId(), LocalDate.of(2026, 11, 3), 210),
-                record(employee.getId(), LocalDate.of(2026, 11, 4), 100)
+                record(employee.getId(), LocalDate.of(2026, 11, 4), 100),
+                record(employee.getId(), LocalDate.of(2026, 11, 5), 0),
+                record(employee.getId(), LocalDate.of(2026, 11, 6), 0)
         );
         when(attendance.findByWorkDateBetween(LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30)))
                 .thenReturn(records);
@@ -93,6 +108,9 @@ class AttendanceReportServiceTest {
         assertThat(row.days().get("2026-11-02").status()).isEqualTo("PRESENT");
         assertThat(row.days().get("2026-11-03").status()).isEqualTo("HALF_DAY");
         assertThat(row.days().get("2026-11-04").status()).isEqualTo("ABSENT");
+        assertThat(row.days().get("2026-11-01").status()).isEqualTo("WEEKLY_OFF");
+        assertThat(row.days().get("2026-11-05").status()).isEqualTo("HOLIDAY");
+        assertThat(row.days().get("2026-11-06").status()).isEqualTo("LEAVE");
         assertThat(row.presentDays()).isEqualTo(1);
         assertThat(row.halfDays()).isEqualTo(1);
         assertThat(row.absentDays()).isEqualTo(1);
@@ -111,7 +129,10 @@ class AttendanceReportServiceTest {
         snapshot.setScheduledStartAt(date.atTime(9, 0).atZone(ZoneId.of("Asia/Kolkata")).toInstant());
         snapshot.setScheduledEndAt(date.atTime(17, 0).atZone(ZoneId.of("Asia/Kolkata")).toInstant());
         snapshot.setExpectedBreakMinutes(60);
-        snapshot.setWorkingDays(EnumSet.allOf(DayOfWeek.class));
+        snapshot.setWorkingDays(EnumSet.of(
+                DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
+                DayOfWeek.THURSDAY, DayOfWeek.FRIDAY
+        ));
         record.setShiftSnapshot(snapshot);
         return record;
     }
