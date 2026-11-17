@@ -1,2 +1,2 @@
 package com.hrms.attendance.model;
-public enum SessionStatus { OPEN, COMPLETED }
+public enum SessionStatus { OPEN, COMPLETED, INCOMPLETE_CHECKOUT }

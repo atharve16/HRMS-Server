@@ -6,8 +6,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.math.BigDecimal;
 import java.time.*;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 @Document("leave_requests")
 @CompoundIndexes({
@@ -35,6 +34,8 @@ public class LeaveRequest {
     private List<LocalDate> leaveDates = new ArrayList<>();
     private List<LocalDate> coveredDates = new ArrayList<>();
     private boolean conflictActive;
+    /** Monthly reservations used when the employee is covered by the new period ledger. */
+    private Map<String, BigDecimal> reservedPeriods = new LinkedHashMap<>();
     @Version private long version;
     @CreatedDate private Instant createdAt;
     @LastModifiedDate private Instant updatedAt;
@@ -55,6 +56,7 @@ public class LeaveRequest {
     public List<LocalDate> getLeaveDates() { return leaveDates; } public void setLeaveDates(List<LocalDate> v) { leaveDates = v; }
     public List<LocalDate> getCoveredDates() { return coveredDates; } public void setCoveredDates(List<LocalDate> v) { coveredDates = v; }
     public boolean isConflictActive() { return conflictActive; } public void setConflictActive(boolean v) { conflictActive = v; }
+    public Map<String, BigDecimal> getReservedPeriods() { return reservedPeriods == null ? Map.of() : reservedPeriods; } public void setReservedPeriods(Map<String, BigDecimal> v) { reservedPeriods = v; }
     public long getVersion() { return version; } public void setVersion(long v) { version = v; }
     public Instant getCreatedAt() { return createdAt; } public void setCreatedAt(Instant v) { createdAt = v; }
     public Instant getUpdatedAt() { return updatedAt; } public void setUpdatedAt(Instant v) { updatedAt = v; }

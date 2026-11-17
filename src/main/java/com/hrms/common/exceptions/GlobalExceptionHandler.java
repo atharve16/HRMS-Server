@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.slf4j.MDC;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -100,7 +101,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiResponse<ApiError>> handleUnexpected(Exception exception, HttpServletRequest request) {
-        log.error("Unhandled request failure at {}", request.getRequestURI(), exception);
+        log.error("Unhandled request failure method={} path={} requestId={}", request.getMethod(),
+                request.getRequestURI(), MDC.get("requestId"), exception);
         return error(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCode.INTERNAL_ERROR,
                 "An unexpected error occurred", request, Map.of());
     }

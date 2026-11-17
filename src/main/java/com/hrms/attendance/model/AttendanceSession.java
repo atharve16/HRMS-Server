@@ -1,7 +1,59 @@
 package com.hrms.attendance.model;
 
 import java.time.Instant;
+import java.time.LocalDate;
+
 public class AttendanceSession {
-    private String sessionId; private Instant checkInAt; private Instant checkOutAt; private GpsEvidence checkInLocation; private GpsEvidence checkOutLocation; private double checkInDistanceMeters; private double checkOutDistanceMeters; private double checkInGpsAccuracyMeters; private double checkOutGpsAccuracyMeters; private SessionStatus status; private Instant createdAt; private Instant updatedAt;
-    public String getSessionId(){return sessionId;} public void setSessionId(String v){sessionId=v;} public Instant getCheckInAt(){return checkInAt;} public void setCheckInAt(Instant v){checkInAt=v;} public Instant getCheckOutAt(){return checkOutAt;} public void setCheckOutAt(Instant v){checkOutAt=v;} public GpsEvidence getCheckInLocation(){return checkInLocation;} public void setCheckInLocation(GpsEvidence v){checkInLocation=v;} public GpsEvidence getCheckOutLocation(){return checkOutLocation;} public void setCheckOutLocation(GpsEvidence v){checkOutLocation=v;} public double getCheckInDistanceMeters(){return checkInDistanceMeters;} public void setCheckInDistanceMeters(double v){checkInDistanceMeters=v;} public double getCheckOutDistanceMeters(){return checkOutDistanceMeters;} public void setCheckOutDistanceMeters(double v){checkOutDistanceMeters=v;} public double getCheckInGpsAccuracyMeters(){return checkInGpsAccuracyMeters;} public void setCheckInGpsAccuracyMeters(double v){checkInGpsAccuracyMeters=v;} public double getCheckOutGpsAccuracyMeters(){return checkOutGpsAccuracyMeters;} public void setCheckOutGpsAccuracyMeters(double v){checkOutGpsAccuracyMeters=v;} public SessionStatus getStatus(){return status;} public void setStatus(SessionStatus v){status=v;} public Instant getCreatedAt(){return createdAt;} public void setCreatedAt(Instant v){createdAt=v;} public Instant getUpdatedAt(){return updatedAt;} public void setUpdatedAt(Instant v){updatedAt=v;}
+    private String sessionId;
+    private Instant checkInAt;
+    private Instant checkOutAt;
+    private GpsEvidence checkInLocation;
+    private GpsEvidence checkOutLocation;
+    private double checkInDistanceMeters;
+    private double checkOutDistanceMeters;
+    private double checkInGpsAccuracyMeters;
+    private double checkOutGpsAccuracyMeters;
+    private SessionStatus status;
+    private String closureType;
+    private String closureReason;
+    private Instant autoClosedAt;
+    private Instant originalCheckInAt;
+    private LocalDate attendanceDate;
+    private Instant createdAt;
+    private Instant updatedAt;
+
+    public String getSessionId() { return sessionId; }
+    public void setSessionId(String v) { sessionId = v; }
+    public Instant getCheckInAt() { return checkInAt; }
+    public void setCheckInAt(Instant v) { checkInAt = v; }
+    public Instant getCheckOutAt() { return checkOutAt; }
+    public void setCheckOutAt(Instant v) { checkOutAt = v; }
+    public GpsEvidence getCheckInLocation() { return checkInLocation; }
+    public void setCheckInLocation(GpsEvidence v) { checkInLocation = v; }
+    public GpsEvidence getCheckOutLocation() { return checkOutLocation; }
+    public void setCheckOutLocation(GpsEvidence v) { checkOutLocation = v; }
+    public double getCheckInDistanceMeters() { return checkInDistanceMeters; }
+    public void setCheckInDistanceMeters(double v) { checkInDistanceMeters = v; }
+    public double getCheckOutDistanceMeters() { return checkOutDistanceMeters; }
+    public void setCheckOutDistanceMeters(double v) { checkOutDistanceMeters = v; }
+    public double getCheckInGpsAccuracyMeters() { return checkInGpsAccuracyMeters; }
+    public void setCheckInGpsAccuracyMeters(double v) { checkInGpsAccuracyMeters = v; }
+    public double getCheckOutGpsAccuracyMeters() { return checkOutGpsAccuracyMeters; }
+    public void setCheckOutGpsAccuracyMeters(double v) { checkOutGpsAccuracyMeters = v; }
+    public SessionStatus getStatus() { return status; }
+    public void setStatus(SessionStatus v) { status = v; }
+    public String getClosureType() { return closureType; }
+    public void setClosureType(String v) { closureType = v; }
+    public String getClosureReason() { return closureReason; }
+    public void setClosureReason(String v) { closureReason = v; }
+    public Instant getAutoClosedAt() { return autoClosedAt; }
+    public void setAutoClosedAt(Instant v) { autoClosedAt = v; }
+    public Instant getOriginalCheckInAt() { return originalCheckInAt; }
+    public void setOriginalCheckInAt(Instant v) { originalCheckInAt = v; }
+    public LocalDate getAttendanceDate() { return attendanceDate; }
+    public void setAttendanceDate(LocalDate v) { attendanceDate = v; }
+    public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant v) { createdAt = v; }
+    public Instant getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(Instant v) { updatedAt = v; }
 }

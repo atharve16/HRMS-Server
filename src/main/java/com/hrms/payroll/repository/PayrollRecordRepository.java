@@ -6,6 +6,7 @@ import java.util.*;
 
 public interface PayrollRecordRepository extends MongoRepository<PayrollRecord,String>,PayrollRecordRepositoryCustom {
     boolean existsByEmployeeIdAndPayrollMonthAndPayrollYear(String employeeId,int month,int year);
+    Optional<PayrollRecord> findByEmployeeIdAndPayrollMonthAndPayrollYear(String employeeId, int month, int year);
     Optional<PayrollRecord> findByIdAndEmployeeIdAndStatusIn(String id,String employeeId,Collection<PayrollStatus> statuses);
     Page<PayrollRecord> findByEmployeeIdAndStatusIn(String employeeId,Collection<PayrollStatus> statuses,Pageable pageable);
     Page<PayrollRecord> findByEmployeeIdAndPayrollYearAndStatusIn(String employeeId,int year,Collection<PayrollStatus> statuses,Pageable pageable);

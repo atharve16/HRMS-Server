@@ -114,6 +114,15 @@ class HolidayServiceTest {
         assertThat(captor.getValue().page()).isEqualTo(1);
     }
 
+    @Test
+    void rejectsUnsupportedSortDirection() {
+        assertThatThrownBy(() -> service.list(new HolidaySearch(null, null, null, true,
+                0, 5, "sideways")))
+                .isInstanceOf(ApiException.class)
+                .hasMessage("sortDirection must be either asc or desc");
+        verifyNoInteractions(holidays);
+    }
+
     private static CompanyHoliday holiday(LocalDate date, boolean active) {
         CompanyHoliday holiday = new CompanyHoliday(); holiday.setId(HOLIDAY_ID); holiday.setName("Republic Day");
         holiday.setDescription("Holiday"); holiday.setDate(date); holiday.setActive(active); return holiday;

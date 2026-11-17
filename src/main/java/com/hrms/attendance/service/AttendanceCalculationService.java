@@ -25,14 +25,43 @@ public class AttendanceCalculationService {
             }
         }
         ShiftSnapshot shift = attendance.getShiftSnapshot();
-        long late = firstIn == null ? 0 : Math.max(0, Duration.between(shift.getScheduledStartAt().plus(Duration.ofMinutes(shift.getGracePeriodMinutes())), firstIn).toMinutes());
-        long early = lastOut == null ? 0 : Math.max(0, Duration.between(lastOut, shift.getScheduledEndAt().minus(Duration.ofMinutes(shift.getEarlyDepartureGraceMinutes()))).toMinutes());
-        long overtime = shift.isFlexible() || lastOut == null ? 0 : Math.max(0, Duration.between(shift.getScheduledEndAt(), lastOut).toMinutes());
-        attendance.setTotalWorkedMinutes(worked); attendance.setTotalBreakMinutes(Math.max(0, breaks));
-        attendance.setLateByMinutes(late); attendance.setEarlyDepartureByMinutes(early); attendance.setOvertimeMinutes(overtime);
+        long late = (firstIn == null || shift == null) ? 0 : Math.max(0, Duration.between(shift.getScheduledStartAt().plus(Duration.ofMinutes(shift.getGracePeriodMinutes())), firstIn).toMinutes());
+        long early = (lastOut == null || shift == null) ? 0 : Math.max(0, Duration.between(lastOut, shift.getScheduledEndAt().minus(Duration.ofMinutes(shift.getEarlyDepartureGraceMinutes()))).toMinutes());
+        long overtime = (shift == null || shift.isFlexible() || lastOut == null) ? 0 : Math.max(0, Duration.between(shift.getScheduledEndAt(), lastOut).toMinutes());
+
         boolean open = sessions.stream().anyMatch(s -> s.getStatus() == SessionStatus.OPEN);
-        attendance.setAttendanceStatus(open ? AttendanceStatus.INCOMPLETE : (worked >= expectedMinutes(shift) ? AttendanceStatus.PRESENT : AttendanceStatus.PARTIAL));
+        boolean incompleteCheckout = sessions.stream().anyMatch(s -> s.getStatus() == SessionStatus.INCOMPLETE_CHECKOUT);
+
+        if (incompleteCheckout) {
+            attendance.setTotalWorkedMinutes(0);
+            attendance.setTotalBreakMinutes(Math.max(0, breaks));
+            attendance.setLateByMinutes(late);
+            attendance.setEarlyDepartureByMinutes(early);
+            attendance.setOvertimeMinutes(0);
+            attendance.setAttendanceStatus(AttendanceStatus.HALF_DAY);
+        } else if (open) {
+            attendance.setTotalWorkedMinutes(0);
+            attendance.setTotalBreakMinutes(Math.max(0, breaks));
+            attendance.setLateByMinutes(late);
+            attendance.setEarlyDepartureByMinutes(early);
+            attendance.setOvertimeMinutes(0);
+            attendance.setAttendanceStatus(AttendanceStatus.INCOMPLETE);
+        } else {
+            attendance.setTotalWorkedMinutes(worked);
+            attendance.setTotalBreakMinutes(Math.max(0, breaks));
+            attendance.setLateByMinutes(late);
+            attendance.setEarlyDepartureByMinutes(early);
+            attendance.setOvertimeMinutes(overtime);
+            attendance.setAttendanceStatus((shift != null && worked >= expectedMinutes(shift)) ? AttendanceStatus.PRESENT : AttendanceStatus.PARTIAL);
+        }
     }
-    private long expectedMinutes(ShiftSnapshot shift) { return Math.max(0, Duration.between(shift.getScheduledStartAt(), shift.getScheduledEndAt()).toMinutes() - shift.getExpectedBreakMinutes()); }
-    private IllegalArgumentException invalid() { return new IllegalArgumentException("Attendance session timestamps are invalid"); }
+
+    private long expectedMinutes(ShiftSnapshot shift) {
+        if (shift == null) return 0;
+        return Math.max(0, Duration.between(shift.getScheduledStartAt(), shift.getScheduledEndAt()).toMinutes() - shift.getExpectedBreakMinutes());
+    }
+
+    private IllegalArgumentException invalid() {
+        return new IllegalArgumentException("Attendance session timestamps are invalid");
+    }
 }

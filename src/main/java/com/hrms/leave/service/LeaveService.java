@@ -15,9 +15,11 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -32,10 +34,20 @@ public class LeaveService {
     private final CompanyTimeProvider time;
     private final AuditService audit;
     private final NotificationService notifications;
+    private final LeavePeriodBalanceRepository periodBalances;
 
+    /** Compatibility constructor retained for focused unit tests and legacy callers. */
     public LeaveService(LeaveRequestRepository requests, LeaveBalanceRepository balances,
                         EmployeeRepository employees, LeaveDayCalculationService calculator,
                         CompanyTimeProvider time, AuditService audit, NotificationService notifications) {
+        this(requests, balances, employees, calculator, time, audit, notifications, null);
+    }
+
+    @Autowired
+    public LeaveService(LeaveRequestRepository requests, LeaveBalanceRepository balances,
+                        EmployeeRepository employees, LeaveDayCalculationService calculator,
+                        CompanyTimeProvider time, AuditService audit, NotificationService notifications,
+                        LeavePeriodBalanceRepository periodBalances) {
         this.requests = requests;
         this.balances = balances;
         this.employees = employees;
@@ -43,6 +55,7 @@ public class LeaveService {
         this.time = time;
         this.audit = audit;
         this.notifications = notifications;
+        this.periodBalances = periodBalances;
     }
 
     @Transactional
@@ -53,7 +66,8 @@ public class LeaveService {
             throw overlap();
         }
         List<LocalDate> leaveDates = calculator.calculate(employee.getId(), input.startDate(), input.endDate());
-        if (input.leaveType().isPaid()) reserve(employee.getId(), input.leaveType(), leaveDates);
+        Map<String, BigDecimal> periodReservations = input.leaveType().isPaid()
+                ? reserve(employee.getId(), input.leaveType(), leaveDates) : Map.of();
 
         LeaveRequest request = new LeaveRequest();
         request.setId(new ObjectId().toHexString());
@@ -69,6 +83,7 @@ public class LeaveService {
         request.setLeaveDates(leaveDates);
         request.setCoveredDates(input.startDate().datesUntil(input.endDate().plusDays(1)).toList());
         request.setConflictActive(true);
+        request.setReservedPeriods(periodReservations);
         try {
             requests.save(request);
         } catch (DuplicateKeyException exception) {
@@ -205,38 +220,84 @@ public class LeaveService {
         return LeaveRequestPageResponse.from(requests.search(search), search.limit());
     }
 
-    private void reserve(String employeeId, LeaveType type, List<LocalDate> leaveDates) {
+    private Map<String, BigDecimal> reserve(String employeeId, LeaveType type, List<LocalDate> leaveDates) {
+        Map<String, BigDecimal> monthly = new LinkedHashMap<>();
         for (Map.Entry<Integer, Long> entry : byYear(leaveDates).entrySet()) {
-            LeaveBalance balance = balances.findByEmployeeIdAndLeaveTypeAndYear(employeeId, type, entry.getKey())
-                    .orElseThrow(() -> insufficient(type, entry.getKey()));
-            BigDecimal amount = days(entry.getValue());
-            if (balance.getAvailableDays().compareTo(amount) < 0) throw insufficient(type, entry.getKey());
-            balance.setPendingDays(balance.getPendingDays().add(amount));
-            recalculate(balance);
-            balances.save(balance);
+            List<LocalDate> datesForYear = leaveDates.stream().filter(d -> d.getYear() == entry.getKey()).toList();
+            for (Map.Entry<String, Long> month : byPeriod(datesForYear).entrySet()) {
+                Optional<LeavePeriodBalance> monthlyBalance = periodBalances == null ? Optional.empty()
+                        : periodBalances.findByEmployeeIdAndLeaveTypeAndPeriod(employeeId, type, month.getKey());
+                if (monthlyBalance.filter(LeaveService::periodConfigured).isPresent()) {
+                    LeavePeriodBalance balance = monthlyBalance.orElseThrow();
+                    BigDecimal amount = days(month.getValue());
+                    recalculate(balance, amount, type, month.getKey());
+                    balance.setPendingDays(balance.getPendingDays().add(amount));
+                    recalculate(balance);
+                    periodBalances.save(balance);
+                    monthly.put(month.getKey(), amount);
+                } else {
+                    LeaveBalance balance = balances.findByEmployeeIdAndLeaveTypeAndYear(employeeId, type, entry.getKey())
+                            .orElseThrow(() -> insufficient(type, entry.getKey()));
+                    BigDecimal amount = days(month.getValue());
+                    if (balance.getAvailableDays().compareTo(amount) < 0) throw insufficient(type, entry.getKey());
+                    balance.setPendingDays(balance.getPendingDays().add(amount));
+                    recalculate(balance);
+                    balances.save(balance);
+                }
+            }
         }
+        return monthly;
     }
 
     private void approveReserved(LeaveRequest request) {
-        for (Map.Entry<Integer, Long> entry : byYear(request.getLeaveDates()).entrySet()) {
-            LeaveBalance balance = requiredBalance(request, entry.getKey());
-            BigDecimal amount = days(entry.getValue());
+        Set<String> monthlyPeriods = request.getReservedPeriods().keySet();
+        for (Map.Entry<String, BigDecimal> entry : request.getReservedPeriods().entrySet()) {
+            LeavePeriodBalance balance = periodBalances.findByEmployeeIdAndLeaveTypeAndPeriod(request.getEmployeeId(), request.getLeaveType(), entry.getKey())
+                    .orElseThrow(this::inconsistentBalance);
+            BigDecimal amount = entry.getValue();
             if (balance.getPendingDays().compareTo(amount) < 0) throw inconsistentBalance();
             balance.setPendingDays(balance.getPendingDays().subtract(amount));
             balance.setUsedDays(balance.getUsedDays().add(amount));
             recalculate(balance);
-            balances.save(balance);
+            periodBalances.save(balance);
+        }
+        for (Map.Entry<Integer, Long> entry : byYear(request.getLeaveDates()).entrySet()) {
+            List<LocalDate> dates = request.getLeaveDates().stream().filter(d -> d.getYear() == entry.getKey()).toList();
+            for (Map.Entry<String, Long> period : byPeriod(dates).entrySet()) {
+                if (monthlyPeriods.contains(period.getKey())) continue;
+                LeaveBalance balance = requiredBalance(request, entry.getKey());
+                BigDecimal amount = days(period.getValue());
+                if (balance.getPendingDays().compareTo(amount) < 0) throw inconsistentBalance();
+                balance.setPendingDays(balance.getPendingDays().subtract(amount));
+                balance.setUsedDays(balance.getUsedDays().add(amount));
+                recalculate(balance);
+                balances.save(balance);
+            }
         }
     }
 
     private void release(LeaveRequest request) {
-        for (Map.Entry<Integer, Long> entry : byYear(request.getLeaveDates()).entrySet()) {
-            LeaveBalance balance = requiredBalance(request, entry.getKey());
-            BigDecimal amount = days(entry.getValue());
+        Set<String> monthlyPeriods = request.getReservedPeriods().keySet();
+        if (periodBalances != null) for (Map.Entry<String, BigDecimal> entry : request.getReservedPeriods().entrySet()) {
+            LeavePeriodBalance balance = periodBalances.findByEmployeeIdAndLeaveTypeAndPeriod(request.getEmployeeId(), request.getLeaveType(), entry.getKey())
+                    .orElseThrow(this::inconsistentBalance);
+            BigDecimal amount = entry.getValue();
             if (balance.getPendingDays().compareTo(amount) < 0) throw inconsistentBalance();
             balance.setPendingDays(balance.getPendingDays().subtract(amount));
             recalculate(balance);
-            balances.save(balance);
+            periodBalances.save(balance);
+        }
+        for (Map.Entry<Integer, Long> entry : byYear(request.getLeaveDates()).entrySet()) {
+            List<LocalDate> dates = request.getLeaveDates().stream().filter(d -> d.getYear() == entry.getKey()).toList();
+            for (Map.Entry<String, Long> period : byPeriod(dates).entrySet()) {
+                if (monthlyPeriods.contains(period.getKey())) continue;
+                LeaveBalance balance = requiredBalance(request, entry.getKey());
+                BigDecimal amount = days(period.getValue());
+                if (balance.getPendingDays().compareTo(amount) < 0) throw inconsistentBalance();
+                balance.setPendingDays(balance.getPendingDays().subtract(amount));
+                recalculate(balance);
+                balances.save(balance);
+            }
         }
     }
 
@@ -304,6 +365,29 @@ public class LeaveService {
 
     private static Map<Integer, Long> byYear(List<LocalDate> dates) {
         return dates.stream().collect(Collectors.groupingBy(LocalDate::getYear, TreeMap::new, Collectors.counting()));
+    }
+
+    private static Map<String, Long> byPeriod(List<LocalDate> dates) {
+        return dates.stream().collect(Collectors.groupingBy(d -> YearMonth.from(d).toString(), TreeMap::new, Collectors.counting()));
+    }
+
+    private static void recalculate(LeavePeriodBalance balance, BigDecimal amount, LeaveType type, String period) {
+        if (balance.getAvailableDays().compareTo(amount) < 0)
+            throw insufficient(type, YearMonth.parse(period).getYear());
+    }
+
+    private static void recalculate(LeavePeriodBalance balance) {
+        BigDecimal available = balance.getAllocatedDays().add(balance.getCarriedForwardDays())
+                .subtract(balance.getExpiredDays()).subtract(balance.getUsedDays()).subtract(balance.getPendingDays());
+        if (available.signum() < 0 || balance.getPendingDays().signum() < 0 || balance.getUsedDays().signum() < 0)
+            throw new ApiException(ErrorCode.INSUFFICIENT_LEAVE_BALANCE, HttpStatus.CONFLICT, "Leave balance cannot be negative");
+        balance.setAvailableDays(available);
+    }
+
+    private static boolean periodConfigured(LeavePeriodBalance balance) {
+        return balance.getAllocatedDays().signum() != 0 || balance.getCarriedForwardDays().signum() != 0
+                || balance.getExpiredDays().signum() != 0 || balance.getUsedDays().signum() != 0
+                || balance.getPendingDays().signum() != 0;
     }
 
     private static BigDecimal days(long count) { return BigDecimal.valueOf(count).setScale(1); }

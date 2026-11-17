@@ -17,6 +17,9 @@ springdoc:
     enabled: ${OPENAPI_ENABLED:false}
 
 app:
+  cors:
+    allowed-origins:
+      - ${FRONTEND_URL}
   auth:
     cookie:
       secure: ${COOKIE_SECURE:true}

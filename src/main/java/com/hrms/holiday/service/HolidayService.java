@@ -57,6 +57,7 @@ public class HolidayService {
 
     public HolidayPageResponse list(HolidaySearch search) {
         validatePage(search.page(), search.limit());
+        validateSortDirection(search.sortDirection());
         DateRange range = range(search.year(), search.fromDate(), search.toDate(), false);
         return HolidayPageResponse.from(holidays.search(new HolidaySearch(null, range.from(), range.to(),
                 search.active(), search.page(), search.limit(), search.sortDirection())), search.limit());
@@ -172,6 +173,13 @@ public class HolidayService {
     private static void validatePage(int page, int limit) {
         if (page < 0 || limit < 1 || limit > 100) throw new ApiException(ErrorCode.VALIDATION_ERROR,
                 HttpStatus.BAD_REQUEST, "Page must be non-negative and limit must be between 1 and 100");
+    }
+    private static void validateSortDirection(String sortDirection) {
+        if (sortDirection != null && !sortDirection.equalsIgnoreCase("asc")
+                && !sortDirection.equalsIgnoreCase("desc")) {
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, HttpStatus.BAD_REQUEST,
+                    "sortDirection must be either asc or desc");
+        }
     }
     private record DateRange(LocalDate from, LocalDate to) {}
 }

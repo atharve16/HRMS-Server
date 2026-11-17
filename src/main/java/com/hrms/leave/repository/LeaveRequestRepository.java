@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.*;
 
 public interface LeaveRequestRepository extends MongoRepository<LeaveRequest, String>, LeaveRequestRepositoryCustom {
+    long countByStatus(LeaveStatus status);
     @Query(value = "{'employeeId':?0,'status':{$in:?1},'startDate':{$lte:?3},'endDate':{$gte:?2}}", exists = true)
     boolean existsOverlap(String employeeId, Collection<LeaveStatus> statuses, LocalDate startDate, LocalDate endDate);
 
