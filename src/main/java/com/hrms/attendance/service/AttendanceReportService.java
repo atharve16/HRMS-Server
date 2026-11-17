@@ -264,8 +264,14 @@ public class AttendanceReportService {
             boolean belowHalfDayThreshold = scheduledMinutes <= 0
                     || record.getTotalWorkedMinutes() * 2 < scheduledMinutes;
 
+            boolean hasIncompleteCheckout = (record.getSessions() != null && record.getSessions().stream()
+                    .anyMatch(session -> session.getStatus() == SessionStatus.INCOMPLETE_CHECKOUT))
+                    || record.getAttendanceStatus() == com.hrms.attendance.model.AttendanceStatus.HALF_DAY;
+
             String status;
-            if (openSession || shiftNotFinished) {
+            if (hasIncompleteCheckout) {
+                status = HALF_DAY;
+            } else if (openSession || shiftNotFinished) {
                 status = IN_PROGRESS;
             } else if (belowHalfDayThreshold && holidayDates.contains(date)) {
                 status = HOLIDAY;

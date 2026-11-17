@@ -32,7 +32,8 @@ class AttendanceCorrectionServiceTest {
     private final AttendanceCalculationService calculator = mock(AttendanceCalculationService.class);
     private final CompanyTimeProvider time = mock(CompanyTimeProvider.class);
     private final AuditService audit = mock(AuditService.class);
-    private final AttendanceCorrectionService service = new AttendanceCorrectionService(requests, attendance, employees, assignments, schedules, calculator, time, new AttendanceProperties(120, 240, 240, 24), audit);
+    private final com.hrms.payroll.repository.PayrollRecordRepository payrolls = mock(com.hrms.payroll.repository.PayrollRecordRepository.class);
+    private final AttendanceCorrectionService service = new AttendanceCorrectionService(requests, attendance, employees, assignments, schedules, calculator, time, new AttendanceProperties(120, 240, 240, 24), audit, payrolls);
     private final AuthPrincipal employeePrincipal = new AuthPrincipal("user-1", "employee@example.com", UserRole.EMPLOYEE);
     private final AuthPrincipal adminPrincipal = new AuthPrincipal("admin-1", "admin@example.com", UserRole.ADMIN);
 
@@ -221,6 +222,89 @@ class AttendanceCorrectionServiceTest {
         assertThat(record.getAttendanceStatus()).isEqualTo(AttendanceStatus.HALF_DAY);
         verify(attendance, never()).save(any());
         verify(calculator, never()).recalculate(any());
+    }
+
+    @Test
+    void approvalOfAlreadyProcessedRequestThrowsConflict() {
+        AttendanceCorrectionRequestEntity request = new AttendanceCorrectionRequestEntity();
+        request.setId("507f1f77bcf86cd799439015");
+        request.setStatus(AttendanceCorrectionStatus.APPROVED);
+
+        when(requests.findById(request.getId())).thenReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> service.approve(request.getId(), new ReviewAttendanceCorrectionRequest("Again"), adminPrincipal))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("Only pending attendance correction requests can be changed");
+    }
+
+    @Test
+    void approvalOnFinalizedPayrollThrowsConflict() {
+        Employee employee = employee();
+        when(employees.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(time.companyZoneId()).thenReturn(ZoneId.of("Asia/Kolkata"));
+
+        AttendanceCorrectionRequestEntity request = new AttendanceCorrectionRequestEntity();
+        request.setId("507f1f77bcf86cd799439016");
+        request.setEmployeeId(employee.getId());
+        request.setAttendanceDate(LocalDate.of(2026, 11, 14));
+        request.setStatus(AttendanceCorrectionStatus.PENDING);
+
+        com.hrms.payroll.model.PayrollRecord payroll = new com.hrms.payroll.model.PayrollRecord();
+        payroll.setStatus(com.hrms.payroll.model.PayrollStatus.FINALIZED);
+
+        when(requests.findById(request.getId())).thenReturn(Optional.of(request));
+        when(payrolls.findByEmployeeIdAndPayrollMonthAndPayrollYear(employee.getId(), 11, 2026))
+                .thenReturn(Optional.of(payroll));
+
+        assertThatThrownBy(() -> service.approve(request.getId(), new ReviewAttendanceCorrectionRequest("HR approval"), adminPrincipal))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("belongs to a finalized payroll");
+    }
+
+    @Test
+    void approvalWithOverlappingSessionThrowsApiException() {
+        Employee employee = employee();
+        when(employees.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(time.companyZoneId()).thenReturn(ZoneId.of("Asia/Kolkata"));
+
+        AttendanceRecord record = new AttendanceRecord();
+        record.setId("507f1f77bcf86cd799439098");
+        record.setEmployeeId(employee.getId());
+        record.setWorkDate(LocalDate.of(2026, 11, 14));
+        record.setAttendanceStatus(AttendanceStatus.HALF_DAY);
+
+        // Session 1: incomplete checkout from 09:00 (03:30Z)
+        AttendanceSession session1 = new AttendanceSession();
+        session1.setSessionId("sess-1");
+        session1.setCheckInAt(Instant.parse("2026-11-14T03:30:00Z"));
+        session1.setStatus(SessionStatus.INCOMPLETE_CHECKOUT);
+
+        // Session 2: already recorded from 14:00 (08:30Z) to 18:00 (12:30Z)
+        AttendanceSession session2 = new AttendanceSession();
+        session2.setSessionId("sess-2");
+        session2.setCheckInAt(Instant.parse("2026-11-14T08:30:00Z"));
+        session2.setCheckOutAt(Instant.parse("2026-11-14T12:30:00Z"));
+        session2.setStatus(SessionStatus.COMPLETED);
+
+        record.getSessions().add(session1);
+        record.getSessions().add(session2);
+
+        AttendanceCorrectionRequestEntity request = new AttendanceCorrectionRequestEntity();
+        request.setId("507f1f77bcf86cd799439017");
+        request.setEmployeeId(employee.getId());
+        request.setAttendanceDate(LocalDate.of(2026, 11, 14));
+        request.setMissingPunch(MissingPunchType.CHECK_OUT);
+        // Requested checkout is 15:00 (09:30Z), which overlaps with session 2 (08:30Z - 12:30Z)
+        request.setRequestedCheckOutAt(Instant.parse("2026-11-14T09:30:00Z"));
+        request.setStatus(AttendanceCorrectionStatus.PENDING);
+        request.setOriginalAttendanceId(record.getId());
+
+        when(requests.findById(request.getId())).thenReturn(Optional.of(request));
+        when(attendance.findByEmployeeIdAndWorkDate(employee.getId(), request.getAttendanceDate())).thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> service.approve(request.getId(), new ReviewAttendanceCorrectionRequest("HR approval"), adminPrincipal))
+                .isInstanceOf(com.hrms.common.exceptions.ApiException.class)
+                .hasMessageContaining("overlaps with another attendance session");
     }
 
     private Employee employee() {

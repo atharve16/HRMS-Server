@@ -1,3 +1,10 @@
 package com.hrms.attendance.repository;
 import com.hrms.attendance.model.AttendanceRecord;import com.hrms.attendance.model.SessionStatus;import java.time.LocalDate;import java.util.*;import org.springframework.data.mongodb.repository.MongoRepository;
-public interface AttendanceRepository extends MongoRepository<AttendanceRecord,String>,AttendanceRepositoryCustom { Optional<AttendanceRecord> findByEmployeeIdAndWorkDate(String employeeId,LocalDate workDate); List<AttendanceRecord> findByEmployeeIdAndWorkDateIn(String employeeId,Collection<LocalDate> dates); List<AttendanceRecord> findByEmployeeIdAndWorkDateBetween(String employeeId,LocalDate from,LocalDate to); List<AttendanceRecord> findBySessionsStatus(SessionStatus status); }
+public interface AttendanceRepository extends MongoRepository<AttendanceRecord,String>,AttendanceRepositoryCustom {
+    Optional<AttendanceRecord> findByEmployeeIdAndWorkDate(String employeeId,LocalDate workDate);
+    List<AttendanceRecord> findByEmployeeIdAndWorkDateIn(String employeeId,Collection<LocalDate> dates);
+    List<AttendanceRecord> findByEmployeeIdAndWorkDateBetween(String employeeId,LocalDate from,LocalDate to);
+    List<AttendanceRecord> findBySessionsStatus(SessionStatus status);
+    List<AttendanceRecord> findByEmployeeIdAndSessionsStatus(String employeeId, SessionStatus status);
+    List<AttendanceRecord> findByWorkDateBetween(LocalDate from, LocalDate to);
+}

@@ -288,6 +288,10 @@ public class AttendanceService {
                     calculator.recalculate(record);
                     record.setUpdatedBy("SYSTEM");
                     records.save(record);
+                    audit.record(null, "ATTENDANCE_AUTO_CLOSE_MIDNIGHT", "ATTENDANCE", record.getId(),
+                            Map.of("workDate", record.getWorkDate().toString()),
+                            Map.of("status", AttendanceStatus.HALF_DAY.name(), "sessionStatus", SessionStatus.INCOMPLETE_CHECKOUT.name()),
+                            "Automatically terminated session at midnight due to missing checkout");
                 }
             }
         }

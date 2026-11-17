@@ -228,4 +228,66 @@ class AttendanceMidnightClosureTest {
         assertThat(response.sessions()).hasSize(1);
         assertThat(response.sessions().get(0).getStatus()).isEqualTo(SessionStatus.OPEN);
     }
+
+    @Test
+    void multipleSessionsOnSameDaySupportSubsequentCheckIn() {
+        String empId = "emp-5";
+        String userId = "user-5";
+        Employee employee = new Employee();
+        employee.setId(empId);
+        employee.setUserId(userId);
+        employee.setEmploymentStatus(EmploymentStatus.ACTIVE);
+        employee.setEmployeeCode("EMP005");
+        employee.setFirstName("Bob");
+        employee.setLastName("Jones");
+
+        when(employeeRepository.findByUserId(userId)).thenReturn(Optional.of(employee));
+        when(attendanceRepository.findByEmployeeIdAndSessionsStatus(empId, SessionStatus.OPEN))
+                .thenReturn(List.of());
+
+        ShiftSnapshot todayShift = new ShiftSnapshot();
+        todayShift.setShiftId("shift-1");
+        todayShift.setShiftName("Day Shift");
+        todayShift.setStartTime(LocalTime.of(9, 0));
+        todayShift.setEndTime(LocalTime.of(18, 0));
+        todayShift.setScheduledStartAt(today.atTime(9, 0).atZone(companyZone).toInstant());
+        todayShift.setScheduledEndAt(today.atTime(18, 0).atZone(companyZone).toInstant());
+        todayShift.setGracePeriodMinutes(15);
+        todayShift.setEarlyDepartureGraceMinutes(10);
+        todayShift.setExpectedBreakMinutes(60);
+
+        OfficeSnapshot office = new OfficeSnapshot();
+        office.setOfficeLocationId("office-1");
+
+        AttendanceScheduleService.Schedule planned = new AttendanceScheduleService.Schedule(
+                today, null, todayShift, office,
+                todayShift.getScheduledStartAt(), todayShift.getScheduledEndAt()
+        );
+
+        when(scheduleService.resolveCheckIn(empId)).thenReturn(planned);
+        when(geofenceService.validate(any(), any())).thenReturn(10.0);
+
+        // Existing completed session for today
+        AttendanceRecord todayRecord = new AttendanceRecord();
+        todayRecord.setId("rec-today-multiple");
+        todayRecord.setEmployeeId(empId);
+        todayRecord.setWorkDate(today);
+        AttendanceSession s1 = new AttendanceSession();
+        s1.setSessionId("s1");
+        s1.setCheckInAt(today.atTime(9, 0).atZone(companyZone).toInstant());
+        s1.setCheckOutAt(today.atTime(13, 0).atZone(companyZone).toInstant());
+        s1.setStatus(SessionStatus.COMPLETED);
+        todayRecord.getSessions().add(s1);
+
+        when(attendanceRepository.findByEmployeeIdAndWorkDate(empId, today)).thenReturn(Optional.of(todayRecord));
+
+        AuthPrincipal principal = new AuthPrincipal(userId, "bob@example.com", com.hrms.auth.entity.UserRole.EMPLOYEE);
+        GpsRequest gps = new GpsRequest(23.18, 79.98, 10.0);
+
+        var response = attendanceService.checkIn(principal, gps);
+
+        assertThat(response.sessions()).hasSize(2);
+        assertThat(response.sessions().get(0).getStatus()).isEqualTo(SessionStatus.COMPLETED);
+        assertThat(response.sessions().get(1).getStatus()).isEqualTo(SessionStatus.OPEN);
+    }
 }

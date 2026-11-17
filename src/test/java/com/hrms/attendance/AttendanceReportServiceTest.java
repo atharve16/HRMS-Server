@@ -113,8 +113,62 @@ class AttendanceReportServiceTest {
         assertThat(row.days().get("2026-11-06").status()).isEqualTo("LEAVE");
         assertThat(row.presentDays()).isEqualTo(1);
         assertThat(row.halfDays()).isEqualTo(1);
-        assertThat(row.absentDays()).isEqualTo(1);
+        assertThat(row.absentDays()).isEqualTo(17);
         assertThat(response.dates()).hasSize(30);
+    }
+
+    @Test
+    void incompleteCheckoutSessionReportsAsHalfDayWithZeroWorkedMinutes() {
+        Employee employee = new Employee();
+        employee.setId("employee-2");
+        employee.setEmployeeCode("EMP-002");
+        employee.setFirstName("Raj");
+        employee.setLastName("Patel");
+        employee.setJoiningDate(LocalDate.of(2026, 1, 1));
+
+        EmployeeWorkAssignment assignment = new EmployeeWorkAssignment();
+        assignment.setEmployeeId(employee.getId());
+        assignment.setShiftId("shift-1");
+        assignment.setEffectiveFrom(LocalDate.of(2026, 1, 1));
+
+        Shift shift = new Shift();
+        shift.setId("shift-1");
+        shift.setStartTime(LocalTime.of(9, 0));
+        shift.setEndTime(LocalTime.of(17, 0));
+        shift.setExpectedBreakMinutes(60);
+        shift.setWorkingDays(EnumSet.of(
+                DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY,
+                DayOfWeek.THURSDAY, DayOfWeek.FRIDAY
+        ));
+
+        when(employees.findEmployedOnOrBefore(LocalDate.of(2026, 11, 30))).thenReturn(List.of(employee));
+        when(assignments.findOverlappingPeriod(LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30)))
+                .thenReturn(List.of(assignment));
+        when(shifts.findAllById(Set.of("shift-1"))).thenReturn(List.of(shift));
+        when(holidays.findByDateBetweenAndActiveTrueOrderByDateAsc(
+                LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30))).thenReturn(List.of());
+        when(leaves.findApprovedOverlappingPeriod(
+                LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30))).thenReturn(List.of());
+        when(time.now()).thenReturn(Instant.parse("2026-12-01T00:00:00Z"));
+        when(time.companyDate()).thenReturn(LocalDate.of(2026, 12, 1));
+
+        AttendanceRecord incRecord = record(employee.getId(), LocalDate.of(2026, 11, 2), 0);
+        incRecord.setAttendanceStatus(com.hrms.attendance.model.AttendanceStatus.HALF_DAY);
+        incRecord.setOvertimeMinutes(0);
+        com.hrms.attendance.model.AttendanceSession s = new com.hrms.attendance.model.AttendanceSession();
+        s.setStatus(com.hrms.attendance.model.SessionStatus.INCOMPLETE_CHECKOUT);
+        incRecord.getSessions().add(s);
+
+        when(attendance.findByWorkDateBetween(LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30)))
+                .thenReturn(List.of(incRecord));
+
+        AttendanceMonthlyReportResponse response = service.monthly("2026-11", null, null);
+        AttendanceMonthlyReportResponse.EmployeeRow row = response.employees().getFirst();
+
+        assertThat(row.days().get("2026-11-02").status()).isEqualTo("HALF_DAY");
+        assertThat(row.days().get("2026-11-02").workedMinutes()).isZero();
+        assertThat(row.days().get("2026-11-02").overtimeMinutes()).isZero();
+        assertThat(row.halfDays()).isEqualTo(1);
     }
 
     private AttendanceRecord record(String employeeId, LocalDate date, long workedMinutes) {

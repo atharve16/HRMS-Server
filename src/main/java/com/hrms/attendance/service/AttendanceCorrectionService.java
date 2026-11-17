@@ -206,6 +206,14 @@ public class AttendanceCorrectionService {
             if (!checkoutDate.equals(request.getAttendanceDate()))
                 throw new ApiException(ErrorCode.INVALID_ATTENDANCE_CORRECTION, HttpStatus.BAD_REQUEST, "Corrected checkout must belong to the same attendance date");
 
+            for (AttendanceSession other : record.getSessions()) {
+                if (other != session && other.getCheckInAt() != null && other.getCheckOutAt() != null) {
+                    if (session.getCheckInAt().isBefore(other.getCheckOutAt()) && request.getRequestedCheckOutAt().isAfter(other.getCheckInAt())) {
+                        throw new ApiException(ErrorCode.INVALID_ATTENDANCE_CORRECTION, HttpStatus.BAD_REQUEST, "Corrected session overlaps with another attendance session");
+                    }
+                }
+            }
+
             session.setCheckOutAt(request.getRequestedCheckOutAt());
             session.setStatus(SessionStatus.COMPLETED);
             session.setClosureType("ADMIN_CORRECTION");
@@ -236,6 +244,14 @@ public class AttendanceCorrectionService {
                 LocalDate checkoutDate = request.getRequestedCheckOutAt().atZone(time.companyZoneId()).toLocalDate();
                 if (!checkoutDate.equals(request.getAttendanceDate()))
                     throw new ApiException(ErrorCode.INVALID_ATTENDANCE_CORRECTION, HttpStatus.BAD_REQUEST, "Corrected checkout must belong to the same attendance date");
+
+                for (AttendanceSession other : record.getSessions()) {
+                    if (other != session && other.getCheckInAt() != null && other.getCheckOutAt() != null) {
+                        if (request.getRequestedCheckInAt().isBefore(other.getCheckOutAt()) && request.getRequestedCheckOutAt().isAfter(other.getCheckInAt())) {
+                            throw new ApiException(ErrorCode.INVALID_ATTENDANCE_CORRECTION, HttpStatus.BAD_REQUEST, "Corrected session overlaps with another attendance session");
+                        }
+                    }
+                }
                 session.setCheckOutAt(request.getRequestedCheckOutAt());
                 session.setStatus(SessionStatus.COMPLETED);
                 session.setCheckOutLocation(null);
