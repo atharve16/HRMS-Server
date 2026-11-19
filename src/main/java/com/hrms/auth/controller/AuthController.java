@@ -105,8 +105,11 @@ public class AuthController {
 
     private ResponseEntity<ApiResponse<AuthenticationResponse>> tokenResponse(
             String message, AuthenticationService.AuthResult result) {
+        java.time.Duration maxAge = result.sessionExpiresAt() != null
+                ? java.time.Duration.between(clockSource.now(), result.sessionExpiresAt())
+                : properties.jwt().refreshExpiry();
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, cookieService.create(result.rawRefreshToken()).toString())
+                .header(HttpHeaders.SET_COOKIE, cookieService.create(result.rawRefreshToken(), maxAge).toString())
                 .body(ApiResponse.success(message, result.response(), clockSource));
     }
 

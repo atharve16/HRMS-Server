@@ -16,7 +16,14 @@ public class RefreshCookieService {
     }
 
     public ResponseCookie create(String rawToken) {
-        return base(rawToken).maxAge(properties.jwt().refreshExpiry()).build();
+        return create(rawToken, properties.jwt().refreshExpiry());
+    }
+
+    public ResponseCookie create(String rawToken, Duration maxAge) {
+        Duration effectiveMaxAge = maxAge != null && !maxAge.isNegative()
+                ? maxAge
+                : Duration.ZERO;
+        return base(rawToken).maxAge(effectiveMaxAge).build();
     }
 
     public ResponseCookie clear() {

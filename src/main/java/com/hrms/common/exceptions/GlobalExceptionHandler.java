@@ -49,6 +49,8 @@ public class GlobalExceptionHandler {
         for (FieldError fieldError : exception.getBindingResult().getFieldErrors()) {
             details.putIfAbsent(fieldError.getField(), fieldError.getDefaultMessage());
         }
+        log.info("Request validation failed method={} path={} requestId={} fields={}",
+                request.getMethod(), request.getRequestURI(), MDC.get("requestId"), details.keySet());
         return error(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_ERROR,
                 "Request validation failed", request, details);
     }
@@ -61,6 +63,8 @@ public class GlobalExceptionHandler {
         Map<String, String> details = new LinkedHashMap<>();
         exception.getConstraintViolations().forEach(violation ->
                 details.put(violation.getPropertyPath().toString(), violation.getMessage()));
+        log.info("Constraint validation failed method={} path={} requestId={} fields={}",
+                request.getMethod(), request.getRequestURI(), MDC.get("requestId"), details.keySet());
         return error(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_ERROR,
                 "Request validation failed", request, details);
     }

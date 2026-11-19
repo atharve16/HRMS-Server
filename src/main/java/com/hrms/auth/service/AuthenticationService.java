@@ -92,7 +92,7 @@ public class AuthenticationService {
         AuthenticationResponse response = new AuthenticationResponse(
                 jwtService.issueAccessToken(user), "Bearer", properties.jwt().accessExpiry().toSeconds(),
                 AuthenticatedUserResponse.from(user));
-        return new AuthResult(response, refreshToken.rawToken());
+        return new AuthResult(response, refreshToken.rawToken(), refreshToken.document().getSessionExpiresAt());
     }
 
     private ApiException invalidRefreshToken() {
@@ -100,6 +100,9 @@ public class AuthenticationService {
                 "The refresh token is invalid or expired");
     }
 
-    public record AuthResult(AuthenticationResponse response, String rawRefreshToken) {
+    public record AuthResult(AuthenticationResponse response, String rawRefreshToken, java.time.Instant sessionExpiresAt) {
+        public AuthResult(AuthenticationResponse response, String rawRefreshToken) {
+            this(response, rawRefreshToken, null);
+        }
     }
 }

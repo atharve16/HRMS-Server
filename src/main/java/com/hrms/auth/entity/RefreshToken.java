@@ -26,6 +26,7 @@ public class RefreshToken {
     @Indexed(expireAfter = "0s")
     private Instant expiresAt;
 
+    private Instant sessionExpiresAt;
     private Instant revokedAt;
     private Instant createdAt;
     private String replacedByTokenId;
@@ -40,6 +41,8 @@ public class RefreshToken {
     public void setTokenFamilyId(String tokenFamilyId) { this.tokenFamilyId = tokenFamilyId; }
     public Instant getExpiresAt() { return expiresAt; }
     public void setExpiresAt(Instant expiresAt) { this.expiresAt = expiresAt; }
+    public Instant getSessionExpiresAt() { return sessionExpiresAt; }
+    public void setSessionExpiresAt(Instant sessionExpiresAt) { this.sessionExpiresAt = sessionExpiresAt; }
     public Instant getRevokedAt() { return revokedAt; }
     public void setRevokedAt(Instant revokedAt) { this.revokedAt = revokedAt; }
     public Instant getCreatedAt() { return createdAt; }

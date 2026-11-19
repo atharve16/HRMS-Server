@@ -42,31 +42,42 @@ public class RefreshTokenService {
     }
 
     public IssuedRefreshToken issue(String userId) {
-        return create(userId, UUID.randomUUID().toString());
+        Instant now = clock.instant();
+        Instant sessionExpiresAt = now.plus(properties.jwt().refreshExpiry());
+        return create(userId, UUID.randomUUID().toString(), sessionExpiresAt);
     }
 
     public RotatedRefreshToken rotate(String rawToken) {
         Instant now = clock.instant();
         RefreshToken current = repository.findByTokenHash(hashService.hash(rawToken))
                 .orElseThrow(this::invalidToken);
+        Instant sessionExpiresAt = current.getSessionExpiresAt() != null
+                ? current.getSessionExpiresAt()
+                : current.getExpiresAt();
+
         if (current.getRevokedAt() != null) {
             java.time.Duration gracePeriod = properties.jwt().refreshGracePeriod();
             if (gracePeriod != null && !now.isAfter(current.getRevokedAt().plus(gracePeriod))) {
-                IssuedRefreshToken replacement = create(current.getUserId(), current.getTokenFamilyId());
+                IssuedRefreshToken replacement = create(current.getUserId(), current.getTokenFamilyId(), sessionExpiresAt);
                 return new RotatedRefreshToken(current.getUserId(), replacement);
+            }
+            // If the token was previously rotated (replacedByTokenId != null), an inactive tab or delayed request
+            // simply submitted a stale token. Reject this request without destroying the active session family.
+            if (current.getReplacedByTokenId() != null) {
+                throw invalidToken();
             }
             revokeFamily(current.getTokenFamilyId(), now);
             throw new ApiException(ErrorCode.REFRESH_TOKEN_REUSED, HttpStatus.UNAUTHORIZED,
                     "Refresh token reuse was detected; the session has been revoked");
         }
-        if (!now.isBefore(current.getExpiresAt())) {
+        if (!now.isBefore(sessionExpiresAt)) {
             revokeFamily(current.getTokenFamilyId(), now);
             throw invalidToken();
         }
 
         try {
             return transactionTemplate.execute(status -> {
-                IssuedRefreshToken replacement = createUnsaved(current.getUserId(), current.getTokenFamilyId());
+                IssuedRefreshToken replacement = createUnsaved(current.getUserId(), current.getTokenFamilyId(), sessionExpiresAt);
                 repository.save(replacement.document());
                 var result = mongoTemplate.updateFirst(
                         Query.query(Criteria.where("_id").is(current.getId()).and("revokedAt").is(null)),
@@ -86,8 +97,11 @@ public class RefreshTokenService {
                 RefreshToken updated = repository.findById(current.getId()).orElse(null);
                 if (updated != null && updated.getRevokedAt() != null && gracePeriod != null
                         && !now.isAfter(updated.getRevokedAt().plus(gracePeriod))) {
-                    IssuedRefreshToken replacement = create(current.getUserId(), current.getTokenFamilyId());
+                    IssuedRefreshToken replacement = create(current.getUserId(), current.getTokenFamilyId(), sessionExpiresAt);
                     return new RotatedRefreshToken(current.getUserId(), replacement);
+                }
+                if (updated != null && updated.getReplacedByTokenId() != null) {
+                    throw invalidToken();
                 }
                 revokeFamily(current.getTokenFamilyId(), now);
             }
@@ -103,13 +117,13 @@ public class RefreshTokenService {
                 .ifPresent(token -> revokeFamily(token.getTokenFamilyId(), clock.instant()));
     }
 
-    private IssuedRefreshToken create(String userId, String familyId) {
-        IssuedRefreshToken issued = createUnsaved(userId, familyId);
+    private IssuedRefreshToken create(String userId, String familyId, Instant sessionExpiresAt) {
+        IssuedRefreshToken issued = createUnsaved(userId, familyId, sessionExpiresAt);
         repository.save(issued.document());
         return issued;
     }
 
-    private IssuedRefreshToken createUnsaved(String userId, String familyId) {
+    private IssuedRefreshToken createUnsaved(String userId, String familyId, Instant sessionExpiresAt) {
         Instant now = clock.instant();
         String rawToken = tokenGenerator.generateRefreshToken();
         RefreshToken document = new RefreshToken();
@@ -118,7 +132,8 @@ public class RefreshTokenService {
         document.setTokenHash(hashService.hash(rawToken));
         document.setTokenFamilyId(familyId);
         document.setCreatedAt(now);
-        document.setExpiresAt(now.plus(properties.jwt().refreshExpiry()));
+        document.setSessionExpiresAt(sessionExpiresAt);
+        document.setExpiresAt(sessionExpiresAt);
         return new IssuedRefreshToken(rawToken, document);
     }
 

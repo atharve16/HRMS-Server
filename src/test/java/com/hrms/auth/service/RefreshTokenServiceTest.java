@@ -94,6 +94,54 @@ class RefreshTokenServiceTest {
     }
 
     @Test
+    void preservesSessionExpiresAtAcrossRotations() {
+        Instant sessionEnd = NOW.plus(java.time.Duration.ofDays(30));
+        RefreshToken current = token("raw-old", null);
+        current.setSessionExpiresAt(sessionEnd);
+        current.setExpiresAt(sessionEnd);
+
+        when(repository.findByTokenHash(hashService.hash("raw-old"))).thenReturn(Optional.of(current));
+        when(generator.generateRefreshToken()).thenReturn("raw-new");
+        when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(mongoTemplate.updateFirst(any(), any(), org.mockito.ArgumentMatchers.eq(RefreshToken.class)))
+                .thenReturn(UpdateResult.acknowledged(1, 1L, null));
+
+        RefreshTokenService.RotatedRefreshToken rotated = service.rotate("raw-old");
+
+        assertThat(rotated.issuedToken().document().getSessionExpiresAt()).isEqualTo(sessionEnd);
+        assertThat(rotated.issuedToken().document().getExpiresAt()).isEqualTo(sessionEnd);
+    }
+
+    @Test
+    void rejectsExpiredSessionAfter30Days() {
+        Instant expiredSession = NOW.minusSeconds(1);
+        RefreshToken current = token("raw-old", null);
+        current.setSessionExpiresAt(expiredSession);
+        current.setExpiresAt(expiredSession);
+
+        when(repository.findByTokenHash(hashService.hash("raw-old"))).thenReturn(Optional.of(current));
+
+        assertThatThrownBy(() -> service.rotate("raw-old"))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN));
+        verify(mongoTemplate).updateMulti(any(), any(), org.mockito.ArgumentMatchers.eq(RefreshToken.class));
+    }
+
+    @Test
+    void rejectsStaleRotatedTokenWithoutDestroyingActiveSession() {
+        RefreshToken staleRotated = token("raw-old", NOW.minusSeconds(60));
+        staleRotated.setReplacedByTokenId("replacement-token-id");
+        when(repository.findByTokenHash(hashService.hash("raw-old"))).thenReturn(Optional.of(staleRotated));
+
+        assertThatThrownBy(() -> service.rotate("raw-old"))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN));
+        // Must NOT revoke the family
+        org.mockito.Mockito.verify(mongoTemplate, org.mockito.Mockito.never())
+                .updateMulti(any(), any(), org.mockito.ArgumentMatchers.eq(RefreshToken.class));
+    }
+
+    @Test
     void logoutRevokesTheWholeTokenFamily() {
         RefreshToken current = token("raw-old", null);
         when(repository.findByTokenHash(hashService.hash("raw-old"))).thenReturn(Optional.of(current));
@@ -110,6 +158,7 @@ class RefreshTokenServiceTest {
         token.setTokenHash(hashService.hash(raw));
         token.setTokenFamilyId("family-id");
         token.setCreatedAt(NOW.minusSeconds(60));
+        token.setSessionExpiresAt(NOW.plusSeconds(3600));
         token.setExpiresAt(NOW.plusSeconds(3600));
         token.setRevokedAt(revokedAt);
         return token;

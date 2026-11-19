@@ -3,6 +3,7 @@ package com.hrms.common.exceptions;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.hrms.common.responses.ClockSource;
+import com.hrms.attendance.dto.GpsRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -56,11 +57,26 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.timestamp").value("2026-10-31T10:00:00Z"));
     }
 
+    @Test
+    void returnsMeaningfulGpsFieldDetailsWithoutExposingRequestValues() throws Exception {
+        mockMvc.perform(post("/test/gps")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"latitude\":12.9,\"longitude\":77.5}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Request validation failed"))
+                .andExpect(jsonPath("$.data.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.data.details.accuracyMeters").value("GPS accuracy is required"));
+    }
+
     @RestController
     @RequestMapping("/test")
     static class ValidationProbeController {
         @PostMapping("/validate")
         void validate(@Valid @RequestBody ProbeRequest request) {
+        }
+
+        @PostMapping("/gps")
+        void gps(@Valid @RequestBody GpsRequest request) {
         }
     }
 

@@ -20,9 +20,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 @Service
 public class AttendanceService {
+    private static final Logger log = LoggerFactory.getLogger(AttendanceService.class);
     private final AttendanceRepository records;
     private final EmployeeRepository employees;
     private final AttendanceScheduleService schedule;
@@ -48,39 +52,70 @@ public class AttendanceService {
 
     @Transactional
     public AttendanceResponse checkIn(AuthPrincipal principal, GpsRequest request) {
-        Employee e = employee(principal);
-        LocalDate today = time.companyDate();
-        closeUnfinishedSessionsForEmployeeBefore(e.getId(), today);
+        String stage = "employee_lookup";
+        Employee e = null;
+        LocalDate workDate = null;
+        boolean recordExists = false;
+        boolean openSession = false;
+        long started = System.nanoTime();
+        try {
+            e = employee(principal);
+            stage = "close_previous_sessions";
+            LocalDate today = time.companyDate();
+            closeUnfinishedSessionsForEmployeeBefore(e.getId(), today);
 
-        AttendanceScheduleService.Schedule planned = schedule.resolveCheckIn(e.getId());
-        double distance = geofence.validate(request, planned.office());
+            stage = "schedule_resolution";
+            AttendanceScheduleService.Schedule planned = schedule.resolveCheckIn(e.getId());
+            workDate = planned.workDate();
 
-        synchronized (lock(e.getId() + "/" + planned.workDate())) {
-            AttendanceRecord a = records.findByEmployeeIdAndWorkDate(e.getId(), planned.workDate())
-                    .orElseGet(() -> newRecord(e, planned));
-            if (a.getSessions().stream().anyMatch(s -> s.getStatus() == SessionStatus.OPEN))
-                throw new ConflictException("An attendance session is already active");
+            stage = "geofence_validation";
+            double distance = geofence.validate(request, planned.office());
 
-            Instant now = time.now();
-            AttendanceSession session = new AttendanceSession();
-            session.setSessionId(UUID.randomUUID().toString());
-            session.setCheckInAt(now);
-            session.setOriginalCheckInAt(now);
-            session.setAttendanceDate(planned.workDate());
-            session.setClosureType("NORMAL");
-            session.setCheckInLocation(new GpsEvidence(request.latitude(), request.longitude(), request.accuracyMeters()));
-            session.setCheckInDistanceMeters(distance);
-            session.setCheckInGpsAccuracyMeters(request.accuracyMeters());
-            session.setStatus(SessionStatus.OPEN);
-            session.setCreatedAt(now);
-            session.setUpdatedAt(now);
-            a.getSessions().add(session);
-            a.setUpdatedBy(principal.userId());
-            calculator.recalculate(a);
-            records.save(a);
-            audit.record(principal, "ATTENDANCE_CHECK_IN", "ATTENDANCE", a.getId(), Map.of(),
-                    Map.of("employeeId", e.getId(), "sessionId", session.getSessionId()), null);
-            return AttendanceResponse.from(a);
+            synchronized (lock(e.getId() + "/" + planned.workDate())) {
+                stage = "attendance_lookup";
+                Optional<AttendanceRecord> existing = records.findByEmployeeIdAndWorkDate(e.getId(), planned.workDate());
+                recordExists = existing.isPresent();
+                Employee employee = e;
+                AttendanceRecord a = existing.orElseGet(() -> newRecord(employee, planned));
+                openSession = a.getSessions().stream().anyMatch(s -> s.getStatus() == SessionStatus.OPEN);
+                if (openSession)
+                    throw new ConflictException("An attendance session is already active");
+
+                stage = "attendance_persist";
+                Instant now = time.now();
+                AttendanceSession session = new AttendanceSession();
+                session.setSessionId(UUID.randomUUID().toString());
+                session.setCheckInAt(now);
+                session.setOriginalCheckInAt(now);
+                session.setAttendanceDate(planned.workDate());
+                session.setClosureType("NORMAL");
+                session.setCheckInLocation(new GpsEvidence(request.latitude(), request.longitude(), request.accuracyMeters()));
+                session.setCheckInDistanceMeters(distance);
+                session.setCheckInGpsAccuracyMeters(request.accuracyMeters());
+                session.setStatus(SessionStatus.OPEN);
+                session.setCreatedAt(now);
+                session.setUpdatedAt(now);
+                a.getSessions().add(session);
+                a.setUpdatedBy(principal.userId());
+                calculator.recalculate(a);
+                records.save(a);
+                audit.record(principal, "ATTENDANCE_CHECK_IN", "ATTENDANCE", a.getId(), Map.of(),
+                        Map.of("employeeId", e.getId(), "sessionId", session.getSessionId()), null);
+                log.info("Attendance check-in accepted requestId={} employeeId={} workDate={} stage={} recordExists={} openSession={} durationMs={}",
+                        requestId(), e.getId(), workDate, stage, recordExists, openSession,
+                        elapsedMs(started));
+                return AttendanceResponse.from(a);
+            }
+        } catch (ApiException ex) {
+            log.warn("Attendance check-in rejected requestId={} employeeId={} workDate={} stage={} code={} status={} recordExists={} openSession={} reason={} durationMs={}",
+                    requestId(), e == null ? null : e.getId(), workDate, stage, ex.getErrorCode(),
+                    ex.getStatus().value(), recordExists, openSession, ex.getMessage(), elapsedMs(started));
+            throw ex;
+        } catch (RuntimeException ex) {
+            log.error("Attendance check-in failed requestId={} employeeId={} workDate={} stage={} recordExists={} openSession={} durationMs={}",
+                    requestId(), e == null ? null : e.getId(), workDate, stage, recordExists, openSession,
+                    elapsedMs(started), ex);
+            throw ex;
         }
     }
 
@@ -383,6 +418,14 @@ public class AttendanceService {
 
     private Object lock(String k) {
         return locks.computeIfAbsent(k, x -> new Object());
+    }
+
+    private String requestId() {
+        return MDC.get("requestId");
+    }
+
+    private long elapsedMs(long started) {
+        return (System.nanoTime() - started) / 1_000_000;
     }
 
     private record OpenSession(AttendanceRecord record, AttendanceSession session) {}
